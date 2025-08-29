@@ -239,7 +239,7 @@ proc init*(
 
 proc init*(
     _: type Zen,
-    T: type[ref | object | SomeOrdinal | SomeNumber],
+    T: type[ref | object | array | SomeOrdinal | SomeNumber],
     flags = default_flags,
     ctx = ctx(),
     id = "",
@@ -248,7 +248,7 @@ proc init*(
   ctx.setup_op_ctx
   result = Zen[T, T](flags: flags).defaults(ctx, id, op_ctx)
 
-proc init*[T: ref | object | tuple | SomeOrdinal | SomeNumber | string | ptr](
+proc init*[T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string | ptr](
     _: type Zen,
     tracked: T,
     flags = default_flags,
@@ -295,7 +295,7 @@ proc init*[K, V](
 
 proc init*[O](
     _: type Zen,
-    tracked: open_array[O],
+    tracked: seq[O],
     flags = default_flags,
     ctx = ctx(),
     id = "",
@@ -305,7 +305,7 @@ proc init*[O](
   var self = Zen[seq[O], O](flags: flags).defaults(ctx, id, op_ctx)
 
   mutate(op_ctx):
-    self.tracked = tracked.to_seq
+    self.tracked = tracked
   result = self
 
 proc init*[O](
@@ -353,7 +353,7 @@ proc init*(
   result = ZenTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
 
 proc zen_init_private*[K, V](
-    tracked: open_array[(K, V)],
+    tracked: seq[(K, V)],
     flags = default_flags,
     ctx = ctx(),
     id = "",
