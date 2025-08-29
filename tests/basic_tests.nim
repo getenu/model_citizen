@@ -193,8 +193,8 @@ proc run*() =
     var a = ~Table[int, ZenSeq[string]]
     a.track proc(changes, _: auto) {.gcsafe.} =
       discard
-    a[1] = ~["nim"]
-    a[5] = ~["vin", "rw"]
+    a[1] = ~(@["nim"])
+    a[5] = ~(@["vin", "rw"])
     a.clear
 
   test "touch table":
@@ -215,12 +215,12 @@ proc run*() =
 
   test "nested":
     var a = ZenTable[int, ZenSeq[int]].init
-    a[1] = ~[1, 2]
+    a[1] = ~(@[1, 2])
     a[1] += 3
 
   test "nested_2":
-    var a = ~{1: ~[1]}
-    a[1] = ~[1, 2]
+    var a = ~{1: ~(@[1])}.to_table
+    a[1] = ~(@[1, 2])
     a[1] += 3
 
   test "nested_changes":
@@ -231,7 +231,7 @@ proc run*() =
 
     let buffers =
       ~(
-        {1: ~({1: ~([~{Flag1}, ~{Flag2}], flags = flags)}, flags = flags)},
+        {1: ~({1: ~(@[~{Flag1}, ~{Flag2}], flags = flags)}.to_table, flags = flags)}.to_table,
         flags = flags,
       )
     var id = buffers.count_changes
@@ -250,7 +250,7 @@ proc run*() =
     1.changes:
       buffers[1][1] += ~{Flag1, Flag2}
     1.changes:
-      buffers[1][1] = ~([~{Flag1}], flags = flags)
+      buffers[1][1] = ~(@[~{Flag1}], flags = flags)
 
     # unlink
     buffers[1][1][0].clear
@@ -268,7 +268,7 @@ proc run*() =
     buffers.untrack(id)
 
     buffers[1] =
-      ~({1: ~([~({Flag1}, flags = flags)], flags = flags)}, flags = flags)
+      ~({1: ~(@[~({Flag1}, flags = flags)], flags = flags)}.to_table, flags = flags)
     id = buffers[1][1][0].count_changes
     1.changes:
       buffers[1][1][0] += {Flag1, Flag2}
