@@ -5,6 +5,8 @@ from std/times import init_duration
 
 const recv_duration = init_duration(milliseconds = 10)
 
+type Vector3 = array[3, float]
+
 proc run*() =
   test "4 way sync":
     var
@@ -144,6 +146,41 @@ proc run*() =
     check b.value == @["a1", "a2"]
     check c.value == @["a1", "a2"]
     check d.value == @["a1", "a2"]
+
+    ctx2.close
+
+  test "Vector3 array network sync":
+    var
+      ctx1 = ZenContext.init(id = "ctx1")
+      ctx2 = ZenContext.init(
+        id = "ctx2",
+        listen_address = "127.0.0.1",
+        min_recv_duration = recv_duration,
+        blocking_recv = true,
+      )
+
+    ctx2.subscribe(ctx1)
+
+    # Create Vector3 value and verify it creates ZenValue not ZenSeq
+    var vec = Vector3([1.0, 2.0, 3.0])
+    var v1 = Zen.init(vec, id = "vector", ctx = ctx1)
+    
+    # Verify type - this ensures our fix worked
+    check v1 is ZenValue[Vector3]
+    check v1.value == vec
+
+    ctx1.boop
+    ctx2.boop
+
+    # Test that it synced over network
+    var v2 = ZenValue[Vector3](ctx2["vector"])
+    check v2.value == vec
+
+    # Test mutation sync
+    v1.value = Vector3([4.0, 5.0, 6.0])
+    ctx1.boop
+    ctx2.boop
+    check v2.value == Vector3([4.0, 5.0, 6.0])
 
     ctx2.close
 

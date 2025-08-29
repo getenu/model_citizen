@@ -864,30 +864,6 @@ proc run*() =
       check src_change_id == 4
       check dest_change_id == 4
 
-  test "Vector3 array type should create ZenValue not ZenSeq":
-    var vec = Vector3([1.0, 2.0, 3.0])
-    var zen_vec = ~vec
-    
-    # Verify this is a ZenValue[Vector3], not a ZenSeq[float]
-    check zen_vec is ZenValue[Vector3]
-    check zen_vec.value == vec
-    
-    # Test that it can sync properly
-    var ctx1 = init_test_ctx("ctx1") 
-    var ctx2 = init_test_ctx("ctx2")
-    ctx2.subscribe(ctx1)
-    
-    var v1 = Zen.init(vec, ctx = ctx1, id = "vector")
-    ctx1.boop
-    
-    var v2 = ZenValue[Vector3](ctx2["vector"])
-    check v1.value == v2.value
-    
-    # Test mutation
-    v1.value = Vector3([4.0, 5.0, 6.0])
-    ctx1.boop
-    check v2.value == Vector3([4.0, 5.0, 6.0])
-
 when is_main_module:
   Zen.bootstrap
   run()
