@@ -567,38 +567,41 @@ proc boop*(
 
 template changes*[T, O](self: Zen[T, O], pause_me, body) =
   let zen = self
-  zen.track proc(changes: seq[Change[O]], zid {.inject.}: ZID) {.gcsafe.} =
-    let pause_zid = if pause_me: zid else: 0
-    zen.pause(pause_zid):
-      for change {.inject.} in changes:
-        template added(): bool =
-          Added in change.changes
+  make_discardable block:
+    {.line.}:
+      zen.track proc(changes: seq[Change[O]], zid {.inject.}: ZID) {.gcsafe.} =
+        let pause_zid = if pause_me: zid else: 0
+        zen.pause(pause_zid):
+          for change {.inject.} in changes:
+            template added(): bool =
+              Added in change.changes
 
-        template added(obj: O): bool =
-          change.item == obj and added()
+            template added(obj: O): bool =
+              change.item == obj and added()
 
-        template removed(): bool =
-          Removed in change.changes
+            template removed(): bool =
+              Removed in change.changes
 
-        template removed(obj: O): bool =
-          change.item == obj and removed()
+            template removed(obj: O): bool =
+              change.item == obj and removed()
 
-        template modified(): bool =
-          Modified in change.changes
+            template modified(): bool =
+              Modified in change.changes
 
-        template modified(obj: O): bool =
-          change.item == obj and modified()
+            template modified(obj: O): bool =
+              change.item == obj and modified()
 
-        template touched(): bool =
-          Touched in change.changes
+            template touched(): bool =
+              Touched in change.changes
 
-        template touched(obj: O): bool =
-          change.item == obj and touched()
+            template touched(obj: O): bool =
+              change.item == obj and touched()
 
-        template closed(): bool =
-          Closed in change.changes
+            template closed(): bool =
+              Closed in change.changes
 
-        body
+            {.line.}:
+              body
 
 template changes*[T, O](self: Zen[T, O], body) =
   changes(self, true, body)

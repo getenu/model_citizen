@@ -3,6 +3,7 @@
 !/**/
 !*.*
 
+nimbledeps/
 nimcache/
 nimblecache/
 htmldocs/
