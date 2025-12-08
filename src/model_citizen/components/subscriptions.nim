@@ -1,5 +1,5 @@
 import
-  std/[importutils, tables, sets, sequtils, algorithm, intsets, locks, math]
+  std/[importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times]
 
 import pkg/threading/channels {.all.}
 import pkg/[flatty, supersnappy]
@@ -158,9 +158,11 @@ proc send*(
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Remote and SyncRemote in flags:
     self.reactor.send(sub.connection, msg.to_flatty.compress)
+    sub.last_sent_time = epoch_time()
   elif sub.kind == Remote and SyncAllNoOverwrite in flags:
     msg.obj = ""
     self.reactor.send(sub.connection, msg.to_flatty.compress)
+    sub.last_sent_time = epoch_time()
 
 proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
   privileged
@@ -328,7 +330,7 @@ proc subscribe*(
 
   let connection = self.reactor.connect(address, port)
   self.send(
-    Subscription(kind: Remote, ctx_id: "temp", connection: connection),
+    Subscription(kind: Remote, ctx_id: "temp", connection: connection, last_sent_time: epoch_time()),
     Message(kind: Subscribe),
   )
 
@@ -362,7 +364,7 @@ proc subscribe*(
   self.process_value_initializers
 
   if bidirectional:
-    let sub = Subscription(kind: Remote, connection: connection, ctx_id: ctx_id)
+    let sub = Subscription(kind: Remote, connection: connection, ctx_id: ctx_id, last_sent_time: epoch_time())
 
     self.add_subscriber(sub, push_all = false, remote_objects)
 
@@ -501,6 +503,9 @@ proc boop*(
     float self.chan.remaining, label_values = [self.metrics_label]
   )
 
+  # Always try to send keepalives when booping
+  self.tick_keepalives()
+
   var msg: Message
   self.unsubscribed = @[]
   var count = 0
@@ -526,6 +531,7 @@ proc boop*(
     if ?self.reactor:
       if poll:
         self.boop_reactor
+
       let messages = self.remote_messages
       self.remote_messages = @[]
 
@@ -539,12 +545,15 @@ proc boop*(
 
       for raw_msg in messages:
         inc count
+        # Handle keepalive pings - just ignore them (receiving updates lastActiveTime in netty)
+        if raw_msg.data == "PING":
+          continue
         let msg = raw_msg.data.uncompress.from_flatty(Message, self)
         if msg.kind == Subscribe:
           var remote: HashSet[string]
           self.add_subscriber(
             Subscription(
-              kind: Remote, connection: raw_msg.conn, ctx_id: msg.source
+              kind: Remote, connection: raw_msg.conn, ctx_id: msg.source, last_sent_time: epoch_time()
             ),
             push_all = true,
             remote,

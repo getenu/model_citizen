@@ -70,6 +70,7 @@ proc init*(
     min_recv_duration: min_recv_duration,
     buffer: buffer,
     metrics_label: label,
+    last_keepalive_tick: epoch_time(),
   )
 
   result.chan = new_chan[Message](elements = chan_size)
@@ -136,6 +137,34 @@ proc boop_reactor*(self: ZenContext) =
     self.reactor.tick
     self.dead_connections &= self.reactor.dead_connections
     self.remote_messages &= self.reactor.messages
+
+proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
+  ## Lightweight tick that only sends keepalives if enough time has passed.
+  ## Safe to call frequently - won't do anything if called too soon.
+  ## Call this after long operations (file I/O, etc.) to prevent connection timeouts.
+  const keepalive_interval = 5.0  ## Seconds between keepalive pings to idle connections
+  const keepalive_tick_interval = 3.0  ## Seconds between keepalive-only ticks
+
+  if not ?self.reactor:
+    return
+
+  let now = epoch_time()
+  if now - self.last_keepalive_tick < keepalive_tick_interval:
+    return
+
+  self.last_keepalive_tick = now
+
+  # Tick the reactor to update time and send any pending packets
+  self.reactor.tick
+
+  # Send keepalive pings to idle remote subscribers
+  for sub in self.subscribers:
+    if sub.kind == Remote and sub.last_sent_time + keepalive_interval <= now:
+      self.reactor.send(sub.connection, "PING")
+      sub.last_sent_time = now
+
+  # Tick again to actually send the keepalive packets
+  self.reactor.tick
 
 proc clear*(self: ZenContext) =
   debug "Clearing ZenContext"

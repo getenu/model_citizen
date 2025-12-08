@@ -4,6 +4,7 @@
 !*.*
 
 nimbledeps/
+deps/
 nimcache/
 nimblecache/
 htmldocs/

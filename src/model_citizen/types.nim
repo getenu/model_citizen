@@ -95,6 +95,7 @@ type
       chan_buffer*: seq[Message]
     of Remote:
       connection*: Connection
+      last_sent_time*: float64
     else:
       discard
 
@@ -123,6 +124,7 @@ type
     unsubscribed*: seq[string]
     metrics_label*: string
     free_queue*: seq[string]
+    last_keepalive_tick*: float64
     when defined(dump_zen_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]
