@@ -48,7 +48,7 @@ proc run*() =
 
       ctx2.subscribe(ctx1)
       Zen.thread_ctx = ctx1
-      ctx1.boop(blocking = false)
+      ctx1.tick(blocking = false)
 
       body
 
@@ -70,10 +70,10 @@ proc run*() =
 
       ctx2.subscribe "127.0.0.1",
         callback = proc() =
-          ctx1.boop(blocking = false)
+          ctx1.tick(blocking = false)
 
       Zen.thread_ctx = ctx1
-      ctx1.boop(blocking = false)
+      ctx1.tick(blocking = false)
 
       body
 
@@ -508,34 +508,34 @@ proc run*() =
 
     local_and_remote:
       var s1 = ZenValue[string].init(ctx = ctx1)
-      ctx2.boop
+      ctx2.tick
       var s2 = ZenValue[string](ctx2[s1])
       check s2.ctx != nil
 
       s1 ~= "sync me"
-      ctx2.boop
+      ctx2.tick
 
       check ~s2 == ~s1
 
       s1 &= " and me"
-      ctx2.boop
+      ctx2.tick
 
       check ~s2 == ~s1 and ~s2 == "sync me and me"
 
       var msg = "hello world"
       var another_msg = "another"
       var src = Tree().init_zen_fields(ctx = ctx1)
-      ctx2.boop
+      ctx2.tick
       var dest = Tree.init_from(src, ctx = ctx2)
 
       src.zen ~= "hello world"
-      ctx2.boop
+      ctx2.tick
       check ~src.zen == "hello world"
       check ~dest.zen == "hello world"
 
       let thing = Thing(id: "Vin")
       src.things += thing
-      ctx2.boop
+      ctx2.tick
       check dest.things.len == 1
       check dest.things[0] != nil
       check dest.things[0].id == "Vin"
@@ -543,14 +543,14 @@ proc run*() =
       src.things -= thing
       check src.things.len == 0
 
-      ctx2.boop
+      ctx2.tick
 
       check dest.things.len == 0
 
       var container = Container().init_zen_fields(ctx = ctx1)
 
       var t = Thing(id: "Scott")
-      ctx2.boop
+      ctx2.tick
       var remote_container = Container.init_from(container, ctx = ctx2)
       container.thing1 ~= t
       container.thing2 ~= t
@@ -558,14 +558,14 @@ proc run*() =
       check container.thing1 ~==~ container.thing2
 
       sleep(100)
-      ctx2.boop
+      ctx2.tick
 
       check remote_container.thing1.value.id == container.thing1.value.id
       check remote_container.thing1.value == remote_container.thing2.value
       var s3 = ZenValue[string].init(ctx = ctx1)
       src.values += s3
       s3.value = "hi"
-      ctx2.boop
+      ctx2.tick
       check dest.values[^1].value == "hi"
 
       var ctx3 = ZenContext.init(id = "ctx3")
@@ -575,10 +575,10 @@ proc run*() =
       check ctx3.len == ctx1.len
       src.values += ~("", ctx = ctx1)
       check ctx1.len != ctx2.len and ctx1.len != ctx3.len
-      ctx2.boop
+      ctx2.tick
       check ctx1.len == ctx2.len and ctx1.len != ctx3.len
       Zen.thread_ctx = ctx3
-      ctx3.boop
+      ctx3.tick
       Zen.thread_ctx = ctx1
       check ctx1.len == ctx2.len and ctx1.len == ctx3.len
 
@@ -586,13 +586,13 @@ proc run*() =
     local_and_remote:
       var a = ~("", ctx = ctx1)
       check ctx1.len == 1
-      ctx2.boop
+      ctx2.tick
       check ctx1.len == 1
       check ctx2.len == 1
 
       a.destroy
       check ctx1.len == 0
-      ctx2.boop
+      ctx2.tick
       check ctx1.len == 0
       check ctx2.len == 0
 
@@ -608,12 +608,12 @@ proc run*() =
       var u2 = Unit(id: 2)
       u1.init_zen_fields
       u2.init_zen_fields
-      ctx2.boop
+      ctx2.tick
 
       var ru1 = Unit.init_from(u1, ctx = ctx2)
 
       u1.units += u2
-      ctx2.boop
+      ctx2.tick
       check ru1.units[0].code.ctx == ctx2
 
   test "zentable of tables":
@@ -632,7 +632,7 @@ proc run*() =
 
       container.value = shared
       container.value.edits[1] = {"1": "one", "2": "two"}.to_table
-      ctx2.boop
+      ctx2.tick
 
       var dest = type(container)(ctx2[container])
       check 1 in dest.value.edits
@@ -642,7 +642,7 @@ proc run*() =
       container.value.edits +=
         {2: {"3": "three"}.to_table, 3: {"4": "four"}.to_table}.to_table
 
-      ctx2.boop
+      ctx2.tick
       check dest.value.edits.len == 3
       check dest.value.edits[3]["4"] == "four"
 
@@ -658,20 +658,20 @@ proc run*() =
       var shared = Block(id: "2")
       shared.init_zen_fields
 
-      ctx2.boop
+      ctx2.tick
       var shared2 = Block.init_from(shared, ctx = ctx2)
 
       shared.chunks[1] = ZenTable[string, string].init
       shared.chunks[1]["hello"] = "world"
       Zen.thread_ctx = ctx2
-      ctx2.boop
+      ctx2.tick
 
       check addr(shared.chunks[]) != addr(shared2.chunks[])
       check shared2.chunks[1]["hello"] == "world"
 
       shared2.chunks[1]["hello"] = "goodbye"
       Zen.thread_ctx = ctx1
-      ctx1.boop
+      ctx1.tick
 
       check shared.chunks[1]["hello"] == "goodbye"
 
@@ -688,7 +688,7 @@ proc run*() =
 
       src += obj
 
-      ctx2.boop
+      ctx2.tick
       var dest = ZenSeq[RefType](ctx2[src])
 
       private_access ZenContext
@@ -700,31 +700,31 @@ proc run*() =
 
       let orig_dest_obj = RefType(ctx2.ref_pool[obj.ref_id].obj)
       src -= obj
-      ctx2.boop
+      ctx2.tick
       check obj.ref_id in ctx2.ref_pool
       check obj.ref_id in ctx2.freeable_refs
       check ctx2.ref_pool[obj.ref_id].references.card == 0
 
       src += obj
-      ctx2.boop
+      ctx2.tick
       check obj.ref_id in ctx2.ref_pool
       check obj.ref_id in ctx2.freeable_refs
       check ctx2.ref_pool[obj.ref_id].references.card == 1
       check dest[0] == orig_dest_obj
       src -= obj
-      ctx2.boop
+      ctx2.tick
 
       # after a timeout the unreferenced object will be removed
       # from the dest ref_pool and freeable_refs, and if we add
       # it back to src a new object will be created in dest
       ctx2.freeable_refs[obj.ref_id] = MonoTime.low
-      ctx2.boop(blocking = false)
+      ctx2.tick(blocking = false)
       check obj.ref_id notin ctx2.ref_pool
       check obj.ref_id notin ctx2.freeable_refs
       check dest.len == 0
 
       src += obj
-      ctx2.boop
+      ctx2.tick
       check dest[0].id == orig_dest_obj.id
       check dest[0] != orig_dest_obj
 
@@ -737,24 +737,24 @@ proc run*() =
     local_and_remote:
       let msg = "hello world"
       var src = ZenSet[Flags].init
-      ctx2.boop
+      ctx2.tick
       var dest = ZenSet[Flags](ctx2[src])
       src += One
-      ctx2.boop
+      ctx2.tick
       check dest.value == {One}
       dest += Two
-      ctx1.boop
+      ctx1.tick
       check src.value == {One, Two}
 
   test "seq of tuples":
     local_and_remote:
       let val = ("hello", 1)
       let z = ZenSeq[val.type].init
-      ctx2.boop
+      ctx2.tick
       z += val
-      ctx2.boop
+      ctx2.tick
       z += val
-      ctx2.boop
+      ctx2.tick
       let z2 = ctx2[z]
       check z2.len == 2
 
@@ -766,11 +766,11 @@ proc run*() =
       let a = RefType(id: "a")
       var src = ZenValue[ptr RefType].init
 
-      ctx2.boop
+      ctx2.tick
       var dest = ZenValue[ptr RefType](ctx2[src])
 
       src.value = unsafe_addr(a)
-      ctx2.boop
+      ctx2.tick
 
       check dest.value[].id == "a"
 
@@ -791,11 +791,11 @@ proc run*() =
       let a = Query(target: RefType3(id: "b"), other: "hello")
       var src = ZenValue[Query].init
 
-      ctx2.boop
+      ctx2.tick
       var dest = ZenValue[Query](ctx2[src])
 
       src.value = a
-      ctx2.boop
+      ctx2.tick
 
       check:
         src.value.target.id == dest.value.target.id
@@ -823,7 +823,7 @@ proc run*() =
       let flags = {TrackChildren, SyncLocal, SyncRemote}
       var src = State().init_zen_fields(flags = flags)
 
-      ctx2.boop
+      ctx2.tick
       var dest = State.init_from(src, ctx = ctx2)
       var src_change_id = 0
       var dest_change_id = 0
@@ -842,15 +842,15 @@ proc run*() =
 
       let base = SyncUnit(id: 1).init_zen_fields(flags = flags)
       src.units.add base
-      ctx2.boop
+      ctx2.tick
 
       let child = SyncUnit(id: 3).init_zen_fields(flags = flags)
-      ctx2.boop
+      ctx2.tick
       src_change_id = 0
       dest_change_id = 0
       base.units.add child
 
-      ctx2.boop
+      ctx2.tick
       check src_change_id == 3
       check dest_change_id == 3
 
@@ -860,7 +860,7 @@ proc run*() =
 
       dest.units[0].units.add grandchild
 
-      ctx1.boop
+      ctx1.tick
       check src_change_id == 4
       check dest_change_id == 4
 

@@ -18,7 +18,7 @@ type
     Touched
     Closed
 
-  MessageKind = enum
+  MessageKind* = enum
     Blank
     Create
     Destroy
@@ -36,12 +36,14 @@ type
     type_name*: string
 
   OperationContext = object
-    source*: string
+    source*: HashSet[string]
     when defined(zen_trace):
       trace*: string
 
   PackedMessageOperation* =
     tuple[kind: MessageKind, ref_id: int, change_object_id: string, obj: string]
+
+  IdMapping* = tuple[short_id: uint8, full_id: string]
 
   Message = object
     kind*: MessageKind
@@ -50,7 +52,9 @@ type
     type_id*: int
     ref_id*: int
     obj*: string
-    source*: string
+    source*: seq[uint8]  # Short IDs for wire format (Remote)
+    source_set*: HashSet[string]  # Full source for internal use (Local) - not serialized
+    id_mappings*: seq[IdMapping]  # New mappings for unknown IDs
     flags*: set[ZenFlags]
     when defined(zen_trace):
       trace*: string
@@ -89,6 +93,10 @@ type
 
   Subscription* = ref object
     ctx_id*: string
+    # Short ID mappings for this connection
+    next_short_id*: uint8  # Next available short ID to assign
+    id_to_short*: Table[string, uint8]  # full context ID → short ID
+    short_to_id*: Table[uint8, string]  # short ID → full context ID
     case kind*: SubscriptionKind
     of Local:
       chan*: Chan[Message]
@@ -127,6 +135,15 @@ type
     last_keepalive_tick*: float64
     bytes_sent*: int
     bytes_received*: int
+    when defined(zen_debug_messages):
+      messages_sent*: int
+      messages_received*: int
+      obj_bytes_sent*: int
+      obj_bytes_received*: int
+      pre_compression_bytes*: int  # Total bytes before snappy compression
+      messages_by_kind*: array[MessageKind, int]
+      obj_bytes_sent_by_kind*: array[MessageKind, int]
+      obj_bytes_recv_by_kind*: array[MessageKind, int]
     when defined(dump_zen_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]
@@ -176,3 +193,36 @@ proc write_value*(w: var JsonWriter, self: ZenContext) =
 
 proc write_value*(w: var JsonWriter, self: Subscription) =
   write_value(w, (ctx_id: self.ctx_id, kind: self.kind))
+
+# Custom flatty serializers for Message to skip source_set (internal use only)
+proc to_flatty*(s: var string, msg: Message) =
+  s.to_flatty msg.kind
+  s.to_flatty msg.object_id
+  s.to_flatty msg.change_object_id
+  s.to_flatty msg.type_id
+  s.to_flatty msg.ref_id
+  s.to_flatty msg.obj
+  s.to_flatty msg.source
+  # Skip source_set - internal use only
+  s.to_flatty msg.id_mappings
+  s.to_flatty msg.flags
+  when defined(zen_trace):
+    s.to_flatty msg.trace
+    s.to_flatty msg.id
+    s.to_flatty msg.debug
+
+proc from_flatty*(s: string, i: var int, msg: var Message) =
+  s.from_flatty(i, msg.kind)
+  s.from_flatty(i, msg.object_id)
+  s.from_flatty(i, msg.change_object_id)
+  s.from_flatty(i, msg.type_id)
+  s.from_flatty(i, msg.ref_id)
+  s.from_flatty(i, msg.obj)
+  s.from_flatty(i, msg.source)
+  # source_set not in wire format
+  s.from_flatty(i, msg.id_mappings)
+  s.from_flatty(i, msg.flags)
+  when defined(zen_trace):
+    s.from_flatty(i, msg.trace)
+    s.from_flatty(i, msg.id)
+    s.from_flatty(i, msg.debug)

@@ -46,7 +46,7 @@ proc contains*[T, O](self: Zen[T, O], children: set[O] | seq[O]): bool =
 
 proc clear*[T, O](self: Zen[T, O]) =
   assert self.valid
-  mutate(OperationContext(source: self.ctx.id)):
+  mutate(OperationContext(source: [self.ctx.id].toHashSet)):
     self.tracked = T.default
 
 proc `value=`*[T, O](self: Zen[T, O], value: T, op_ctx = OperationContext()) =
@@ -136,7 +136,7 @@ proc delete*[T, O](self: Zen[T, O], value: O) =
       value,
       value,
       delete,
-      op_ctx = OperationContext(source: [self.ctx.id].to_hash_set),
+      op_ctx = OperationContext(source: [self.ctx.id].toHashSet),
     )
 
 proc delete*[K, V](self: ZenTable[K, V], key: K) =
@@ -281,7 +281,7 @@ proc destroy*[T, O](self: Zen[T, O], publish = true) =
   self.ctx.objects_need_packing = true
 
   if publish:
-    self.publish_destroy OperationContext(source: self.ctx.id)
+    self.publish_destroy OperationContext(source: [self.ctx.id].toHashSet)
 
 proc `~=`*[T, O](a: Zen[T, O], b: T) =
   `value=`(a, b)

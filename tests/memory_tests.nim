@@ -109,8 +109,8 @@ proc run*() =
     var obj = ZenValue[string].init(ctx = ctx1, id = "chain_obj")
     obj.value = "test_chain"
     
-    ctx2.boop()
-    ctx3.boop()
+    ctx2.tick()
+    ctx3.tick()
     
     # Verify propagation
     var obj2 = ZenValue[string](ctx2["chain_obj"])
@@ -137,7 +137,7 @@ proc run*() =
       let value = "value_" & $i & "_" & "x".repeat(100)  # Large string values
       large_table[key] = value
       
-    ctx2.boop()
+    ctx2.tick()
     
     var remote_table = ZenTable[string, string](ctx2["large_data"])
     check remote_table.len == 20

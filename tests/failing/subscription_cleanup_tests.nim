@@ -13,7 +13,7 @@ proc run*() =
     var obj = ZenValue[string].init(ctx = ctx1, id = "cleanup_test")
     obj.value = "before_disconnect"
     
-    ctx2.boop()
+    ctx2.tick()
     let remote_obj = ZenValue[string](ctx2["cleanup_test"])
     check remote_obj.value == "before_disconnect"
     
@@ -25,7 +25,7 @@ proc run*() =
     obj.value = "after_disconnect"
     
     # The client should detect the disconnection
-    ctx2.boop()
+    ctx2.tick()
     
     # This might fail if cleanup isn't proper
     check ctx2.subscribers.len == 0  # Should have no active subscribers
@@ -43,7 +43,7 @@ proc run*() =
     
     # Subscribe and sync all objects
     ctx2.subscribe(ctx1)
-    ctx2.boop()
+    ctx2.tick()
     
     check ctx2.len == 1000
     
@@ -51,7 +51,7 @@ proc run*() =
     for obj in objects:
       obj.destroy()
     
-    ctx2.boop()
+    ctx2.tick()
     
     # ctx2 should clean up the remote references
     # But this might fail if cleanup is incomplete
@@ -70,8 +70,8 @@ proc run*() =
       var obj = ZenValue[string].init(ctx = ctx1, id = "chain_obj")
       obj.value = "propagate"
       
-      ctx2.boop()
-      ctx3.boop()
+      ctx2.tick()
+      ctx3.tick()
       
       # All contexts have the object
       check "chain_obj" in ctx2
@@ -97,7 +97,7 @@ proc run*() =
         var obj = ZenValue[int].init(ctx = ctx1, id = "rapid_" & $i)
         obj.value = i
         
-        temp_ctx.boop()
+        temp_ctx.tick()
         
         # temp_ctx is destroyed when block exits
         # This tests cleanup under rapid subscription/destruction cycles
@@ -139,7 +139,7 @@ proc run*() =
     # Immediately destroy the object while subscription is establishing
     obj.destroy()
     
-    ctx2.boop()
+    ctx2.tick()
     
     # This race condition might cause issues
     # The object might be partially synced or leave inconsistent state

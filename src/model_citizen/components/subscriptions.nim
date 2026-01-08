@@ -1,5 +1,5 @@
 import
-  std/[importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times]
+  std/[importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times, strutils]
 
 import pkg/threading/channels {.all.}
 import pkg/[flatty, supersnappy]
@@ -19,6 +19,45 @@ type FlatRef = tuple[tid: int, ref_id: string, item: string]
 type ZenFlattyInfo = tuple[object_id: string, tid: int]
 
 privileged
+
+# Short ID helpers for source field optimization
+
+proc get_or_assign_short_id(sub: Subscription, full_id: string): uint8 =
+  ## Get existing short ID or assign a new one for this connection.
+  if full_id in sub.id_to_short:
+    result = sub.id_to_short[full_id]
+  else:
+    result = sub.next_short_id
+    inc sub.next_short_id
+    sub.id_to_short[full_id] = result
+    sub.short_to_id[result] = full_id
+
+proc encode_source(sub: Subscription, source: HashSet[string]): tuple[source: seq[uint8], mappings: seq[IdMapping]] =
+  ## Convert source HashSet to short IDs, returning new mappings for unknown IDs.
+  for full_id in source:
+    let is_new = full_id notin sub.id_to_short
+    let short_id = sub.get_or_assign_short_id(full_id)
+    result.source.add short_id
+    if is_new:
+      result.mappings.add (short_id, full_id)
+
+proc register_mappings(sub: Subscription, mappings: seq[IdMapping]) =
+  ## Register new ID mappings from an incoming message.
+  for (short_id, full_id) in mappings:
+    if short_id notin sub.short_to_id:
+      sub.short_to_id[short_id] = full_id
+      sub.id_to_short[full_id] = short_id
+      # Update next_short_id to avoid conflicts
+      if short_id >= sub.next_short_id:
+        sub.next_short_id = short_id + 1
+
+proc decode_source(sub: Subscription, source: seq[uint8]): HashSet[string] =
+  ## Convert short IDs back to full context ID HashSet.
+  for short_id in source:
+    if short_id in sub.short_to_id:
+      result.incl sub.short_to_id[short_id]
+    else:
+      result.incl "unknown:" & $short_id
 
 proc `$`*(self: Subscription): string =
   \"{self.kind} subscription for {self.ctx_id}"
@@ -144,26 +183,53 @@ proc send*(
   when defined(dump_zen_objects):
     self.counts[msg.kind] += 1
 
-  debug "sending message", msg
+  # Build source set
+  var source = op_ctx.source
+  if source.len == 0:
+    source.incl self.id
 
-  msg.source = op_ctx.source
-  if msg.source == "":
-    msg.source = self.id
+  debug "sending message", msg
 
   var msg = msg
   if sub.kind == Local and SyncLocal in flags:
+    # Local: just use the HashSet, no encoding needed
+    msg.source_set = source
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Local and SyncAllNoOverwrite in flags:
+    msg.source_set = source
     msg.obj = ""
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Remote and SyncRemote in flags:
-    let data = msg.to_flatty.compress
+    # Remote: encode source to short IDs
+    let (encoded_source, new_mappings) = sub.encode_source(source)
+    msg.source = encoded_source
+    msg.id_mappings = new_mappings
+    when defined(zen_debug_messages):
+      inc self.messages_sent
+      self.obj_bytes_sent += msg.obj.len
+      inc self.messages_by_kind[msg.kind]
+      self.obj_bytes_sent_by_kind[msg.kind] += msg.obj.len
+    let serialized = msg.to_flatty
+    when defined(zen_debug_messages):
+      self.pre_compression_bytes += serialized.len
+    let data = serialized.compress
     self.bytes_sent += data.len
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
   elif sub.kind == Remote and SyncAllNoOverwrite in flags:
+    # Remote: encode source to short IDs
+    let (encoded_source, new_mappings) = sub.encode_source(source)
+    msg.source = encoded_source
+    msg.id_mappings = new_mappings
+    when defined(zen_debug_messages):
+      inc self.messages_sent
+      # obj is empty for NoOverwrite, track 0 bytes
+      inc self.messages_by_kind[msg.kind]
     msg.obj = ""
-    let data = msg.to_flatty.compress
+    let serialized = msg.to_flatty
+    when defined(zen_debug_messages):
+      self.pre_compression_bytes += serialized.len
+    let data = serialized.compress
     self.bytes_sent += data.len
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
@@ -364,25 +430,42 @@ proc subscribe*(
     if callback != nil:
       callback()
 
+  # Create bidirectional subscription BEFORE processing messages so mappings get registered
+  var bi_sub: Subscription = nil
+  if bidirectional:
+    bi_sub = Subscription(kind: Remote, connection: connection, ctx_id: ctx_id, last_sent_time: epoch_time())
+    self.add_subscriber(bi_sub, push_all = false, remote_objects)
+
   self.tick(poll = false)
   self.subscribing = false
   self.process_value_initializers
 
-  if bidirectional:
-    let sub = Subscription(kind: Remote, connection: connection, ctx_id: ctx_id, last_sent_time: epoch_time())
-
-    self.add_subscriber(sub, push_all = false, remote_objects)
-
   self.tick(blocking = false)
 
-proc process_message(self: ZenContext, msg: Message) =
+proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
   privileged
   log_defaults("model_citizen publishing")
-  assert self.id notin msg.source
+
+  # Get source: either from source_set (Local) or decode from source (Remote)
+  let source =
+    if msg.source_set.len > 0:
+      # Local message - source_set is already populated
+      msg.source_set
+    elif sub != nil:
+      # Remote message - decode from short IDs
+      sub.decode_source(msg.source)
+    else:
+      # Fallback - shouldn't normally happen
+      var fallback: HashSet[string]
+      for id in msg.source:
+        fallback.incl $id
+      fallback
+
+  assert self.id notin source
 
   received_message_counter.inc(label_values = [self.metrics_label])
   # when defined(zen_trace):
-  #   let src = self.name & "-" & msg.source
+  #   let src = self.name & "-" & source_str
   #   if src in self.last_received_id:
   #     if msg.id != self.last_received_id[src] + 1:
   #       raise_check &"src={src} msg.id={msg.id} " &
@@ -402,9 +485,11 @@ proc process_message(self: ZenContext, msg: Message) =
         obj: op.obj,
         flags: msg.flags,
         source: msg.source,
+        source_set: msg.source_set,
+        id_mappings: msg.id_mappings,
       )
 
-      self.process_message(new_msg)
+      self.process_message(new_msg, sub)
   elif msg.kind == Create:
     {.gcsafe.}:
       if msg.type_id notin type_initializers:
@@ -418,7 +503,7 @@ proc process_message(self: ZenContext, msg: Message) =
         self,
         msg.object_id,
         msg.flags,
-        OperationContext.init(source = msg, ctx = self),
+        OperationContext.init(source = source, ctx = self),
       )
       # :(
   elif msg.kind != Blank:
@@ -428,7 +513,7 @@ proc process_message(self: ZenContext, msg: Message) =
       return
     let obj = self.objects[msg.object_id]
     obj.change_receiver(
-      obj, msg, op_ctx = OperationContext.init(source = msg, ctx = self)
+      obj, msg, op_ctx = OperationContext.init(source = source, ctx = self)
     )
   else:
     fail "Can't recv a blank message"
@@ -553,16 +638,40 @@ proc tick*(
         # Handle keepalive pings - just ignore them (receiving updates lastActiveTime in netty)
         if raw_msg.data == "PING":
           continue
-        let msg = raw_msg.data.uncompress.from_flatty(Message, self)
+        var msg = raw_msg.data.uncompress.from_flatty(Message, self)
+        when defined(zen_debug_messages):
+          inc self.messages_received
+          self.obj_bytes_received += msg.obj.len
+          inc self.messages_by_kind[msg.kind]
+          self.obj_bytes_recv_by_kind[msg.kind] += msg.obj.len
+
+        # Find subscription for this connection to decode source
+        var sub: Subscription = nil
+        for s in self.subscribers:
+          if s.kind == Remote and s.connection == raw_msg.conn:
+            sub = s
+            break
+
         if msg.kind == Subscribe:
-          var remote: HashSet[string]
-          self.add_subscriber(
-            Subscription(
-              kind: Remote, connection: raw_msg.conn, ctx_id: msg.source, last_sent_time: epoch_time()
-            ),
-            push_all = true,
-            remote,
+          # New subscriber - create subscription and extract their ID from mappings
+          var source_str = ""
+          if msg.id_mappings.len > 0 and msg.source.len > 0:
+            # First mapping with matching short ID is the sender's ID
+            for (short_id, full_id) in msg.id_mappings:
+              if msg.source.len > 0 and short_id == msg.source[0]:
+                source_str = full_id
+                break
+          if source_str == "":
+            source_str = "unknown"
+
+          var new_sub = Subscription(
+            kind: Remote, connection: raw_msg.conn, ctx_id: source_str, last_sent_time: epoch_time()
           )
+          # Register all mappings from the subscribe message
+          new_sub.register_mappings(msg.id_mappings)
+
+          var remote: HashSet[string]
+          self.add_subscriber(new_sub, push_all = true, remote)
 
           self.pack_objects
           var objects = self.objects.keys.to_seq.join(":")
@@ -577,7 +686,10 @@ proc tick*(
             self.bytes_received += msg.data.len
           self.remote_messages &= self.reactor.messages
         else:
-          self.process_message(msg)
+          # Regular message - decode source using subscription's mappings
+          if sub != nil:
+            sub.register_mappings(msg.id_mappings)
+          self.process_message(msg, sub)
 
     if poll == false or
         ((count > 0 or not blocking) and get_mono_time() > recv_until):

@@ -26,7 +26,7 @@ proc run*() =
     ctx3.subscribe(ctx4)
     ctx3.subscribe "127.0.0.1",
       callback = proc() =
-        ctx2.boop(blocking = false)
+        ctx2.tick(blocking = false)
 
     var
       a = ZenValue[string].init(id = "test1", ctx = ctx1)
@@ -34,14 +34,14 @@ proc run*() =
       c = ZenValue[string].init(id = "test1", ctx = ctx3)
       d = ZenValue[string].init(id = "test1", ctx = ctx4)
 
-    ctx1.boop
-    ctx2.boop
+    ctx1.tick
+    ctx2.tick
 
     a.value = "set"
-    ctx1.boop
-    ctx2.boop
-    ctx3.boop
-    ctx4.boop
+    ctx1.tick
+    ctx2.tick
+    ctx3.tick
+    ctx4.tick
     check d.value == "set"
 
     ctx2.close
@@ -74,17 +74,17 @@ proc run*() =
     ctx2.subscribe(ctx1)
     ctx3.subscribe(ctx4)
 
-    ctx1.boop
+    ctx1.tick
 
     check a.value == @["a1", "a2"]
     check b.value == @["a1", "a2"]
 
-    ctx4.boop
+    ctx4.tick
     ctx3.subscribe "127.0.0.1",
       callback = proc() =
-        ctx2.boop(blocking = false)
+        ctx2.tick(blocking = false)
 
-    ctx4.boop
+    ctx4.tick
 
     check count == 2
     check a.len == 2
@@ -127,17 +127,17 @@ proc run*() =
     ctx2.subscribe(ctx1)
     ctx3.subscribe(ctx4)
 
-    ctx1.boop
+    ctx1.tick
 
     check a.value == @["a1", "a2"]
     check b.value == @["a1", "a2"]
 
-    ctx4.boop
+    ctx4.tick
     ctx3.subscribe "127.0.0.1",
       callback = proc() =
-        ctx2.boop(blocking = false)
+        ctx2.tick(blocking = false)
 
-    ctx4.boop
+    ctx4.tick
 
     check count == 2
     check a.len == 2
@@ -169,8 +169,8 @@ proc run*() =
     check v1 is ZenValue[Vector3]
     check v1.value == vec
 
-    ctx1.boop
-    ctx2.boop
+    ctx1.tick
+    ctx2.tick
 
     # Test that it synced over network
     var v2 = ZenValue[Vector3](ctx2["vector"])
@@ -178,8 +178,8 @@ proc run*() =
 
     # Test mutation sync
     v1.value = Vector3([4.0, 5.0, 6.0])
-    ctx1.boop
-    ctx2.boop
+    ctx1.tick
+    ctx2.tick
     check v2.value == Vector3([4.0, 5.0, 6.0])
 
     ctx2.close

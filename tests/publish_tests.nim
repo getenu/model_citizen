@@ -32,7 +32,7 @@ proc run*() =
     units1 += build
     units1 += bot
 
-    ctx2.boop
+    ctx2.tick
 
     check units1.len == 2
     check units1[0] of Build
@@ -59,7 +59,7 @@ proc run*() =
 
     units1.value = units
 
-    ctx2.boop
+    ctx2.tick
 
     check units1.len == 2
     check units1[0] of Build

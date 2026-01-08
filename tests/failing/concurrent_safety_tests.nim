@@ -32,7 +32,7 @@ proc run*() =
     var shared_obj = ZenValue[int].init(ctx = ctx1, id = "shared_obj")
     shared_obj.value = 0
     
-    ctx2.boop()
+    ctx2.tick()
     
     # Start concurrent modification
     var modifier_thread: Thread[ZenContext]
@@ -86,7 +86,7 @@ proc run*() =
     ctx2.subscribe(ctx1)
     obj.value = "after_subscription"
     
-    ctx2.boop()
+    ctx2.tick()
     
     let remote_obj = ZenValue[string](ctx2["racing_obj"])
     

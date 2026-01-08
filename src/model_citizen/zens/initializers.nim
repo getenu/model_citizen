@@ -59,7 +59,7 @@ proc defaults[T, O](
   create_initializer(self)
   self.id =
     if id == "":
-      $self.type & "-" & generate_id()
+      generate_id()
     else:
       id
 
@@ -89,7 +89,7 @@ proc defaults[T, O](
         flags: flags,
         type_id: zen_type_id,
         object_id: id,
-        source: op_ctx.source,
+        # source is set by send() based on subscription type
       )
 
       when defined(zen_trace):

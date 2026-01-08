@@ -63,7 +63,7 @@ proc run*() =
           level5.data = "deep_data_" & $i & "_" & $j & "_" & $k
           level4.level5_objects += level5
     
-    ctx2.boop()
+    ctx2.tick()
     
     # Verify the complex structure was serialized and deserialized correctly
     var remote_root = NestedLevel1.init_from(root, ctx = ctx2)
@@ -107,7 +107,7 @@ proc run*() =
     nodeB1.a_ref.value = nodeA
     nodeB2.a_ref.value = nodeA
     
-    ctx2.boop()
+    ctx2.tick()
     
     # This might fail due to circular reference serialization issues
     var remote_nodeA = NodeA.init_from(nodeA, ctx = ctx2)
@@ -125,7 +125,7 @@ proc run*() =
     var data_container = ZenValue[string].init(ctx = ctx1, id = "large_data")
     data_container.value = large_data
     
-    ctx2.boop()
+    ctx2.tick()
     
     # Large data serialization might fail or be very slow
     let remote_data = ZenValue[string](ctx2["large_data"])
@@ -163,7 +163,7 @@ proc run*() =
       
       complex_table["item_" & $i] = mixed
     
-    ctx2.boop()
+    ctx2.tick()
     
     # Complex serialization might fail
     let remote_table = ZenTable[string, MixedData](ctx2["complex"])

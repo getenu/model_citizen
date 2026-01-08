@@ -16,7 +16,7 @@ proc run*() =
       
       # Check if context is still responding
       if i mod 1000 == 0:
-        ctx.boop()
+        ctx.tick()
     
     # Context should still be functional
     check ctx.len == 10000
@@ -100,7 +100,7 @@ proc run*() =
     
     # Propagate through all contexts
     for ctx in contexts:
-      ctx.boop()
+      ctx.tick()
     
     # Should reach the end of the chain
     let final_obj = ZenValue[string](contexts[^1]["chain_obj"])

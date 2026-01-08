@@ -14,34 +14,22 @@ proc init*[T](
 
 proc init*(
     _: type OperationContext,
-    source: string | Message = "",
+    source: HashSet[string] = initHashSet[string](),
     ctx: ZenContext = nil,
 ): OperationContext =
-  let new_source = if ?ctx: ctx.id else: "??"
   result = OperationContext()
-  when source is Message and defined(zen_trace):
-    result.source = \"{source.source} {new_source}"
-    result.trace =
-      \"""
-
-Source Message Trace:
-{source.trace}
-
-Op Trace:
-{get_stack_trace()}
-
-    """
-  elif source is Message:
-    result.source = \"{source.source} {new_source}"
-  else:
-    result.source = \"{source} {new_source}"
+  result.source = source
+  if ?ctx:
+    result.source.incl ctx.id
+  when defined(zen_trace):
+    result.trace = get_stack_trace()
 
 template setup_op_ctx*(self: ZenContext) =
   let op_ctx =
     if ?op_ctx:
       op_ctx
     else:
-      OperationContext.init(source = self.id)
+      OperationContext.init(source = [self.id].toHashSet)
 
 template privileged*() =
   private_access ZenContext

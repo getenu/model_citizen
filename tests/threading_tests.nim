@@ -27,7 +27,7 @@ proc start_worker(ctx: ZenContext) {.thread.} =
 
   global_cond.signal()
   while working:
-    ctx.boop
+    ctx.tick
 
 proc run*() =
   test "basic":
@@ -36,10 +36,10 @@ proc run*() =
     var ctx = ZenContext.init(id = "worker", listen_address = "127.0.0.1")
     Zen.thread_ctx.subscribe "127.0.0.1",
       callback = proc() =
-        ctx.boop
+        ctx.tick
 
     var a = Zen.init("", id = "t1")
-    ctx.boop(blocking = true)
+    ctx.tick(blocking = true)
     global_lock.acquire()
     worker_thread.create_thread(start_worker, ctx)
     global_cond.wait(global_lock)
@@ -63,7 +63,7 @@ proc run*() =
           a.value = "scott"
 
     while working:
-      Zen.thread_ctx.boop
+      Zen.thread_ctx.tick
     worker_thread.join_thread
     ctx.close
 
