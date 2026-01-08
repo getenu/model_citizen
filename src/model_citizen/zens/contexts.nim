@@ -136,6 +136,8 @@ proc boop_reactor*(self: ZenContext) =
   if ?self.reactor:
     self.reactor.tick
     self.dead_connections &= self.reactor.dead_connections
+    for msg in self.reactor.messages:
+      self.bytes_received += msg.data.len
     self.remote_messages &= self.reactor.messages
 
 proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
@@ -160,6 +162,7 @@ proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
   # Send keepalive pings to idle remote subscribers
   for sub in self.subscribers:
     if sub.kind == Remote and sub.last_sent_time + keepalive_interval <= now:
+      self.bytes_sent += 4  # "PING"
       self.reactor.send(sub.connection, "PING")
       sub.last_sent_time = now
 

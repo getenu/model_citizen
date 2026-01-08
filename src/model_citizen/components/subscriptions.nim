@@ -157,11 +157,15 @@ proc send*(
     msg.obj = ""
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Remote and SyncRemote in flags:
-    self.reactor.send(sub.connection, msg.to_flatty.compress)
+    let data = msg.to_flatty.compress
+    self.bytes_sent += data.len
+    self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
   elif sub.kind == Remote and SyncAllNoOverwrite in flags:
     msg.obj = ""
-    self.reactor.send(sub.connection, msg.to_flatty.compress)
+    let data = msg.to_flatty.compress
+    self.bytes_sent += data.len
+    self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
 
 proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
@@ -346,6 +350,7 @@ proc subscribe*(
         raise ConnectionError.init(\"Unable to connect to {address}:{port}")
 
     for msg in self.reactor.messages:
+      self.bytes_received += msg.data.len
       if msg.data.starts_with("ACK:"):
         if bidirectional:
           let pieces = msg.data.split(":")
@@ -562,10 +567,14 @@ proc boop*(
           self.pack_objects
           var objects = self.objects.keys.to_seq.join(":")
 
-          self.reactor.send(raw_msg.conn, "ACK:" & self.id & ":" & objects)
+          let ack_data = "ACK:" & self.id & ":" & objects
+          self.bytes_sent += ack_data.len
+          self.reactor.send(raw_msg.conn, ack_data)
           sent_message_counter.inc(label_values = [self.metrics_label])
           self.reactor.tick
           self.dead_connections &= self.reactor.dead_connections
+          for msg in self.reactor.messages:
+            self.bytes_received += msg.data.len
           self.remote_messages &= self.reactor.messages
         else:
           self.process_message(msg)

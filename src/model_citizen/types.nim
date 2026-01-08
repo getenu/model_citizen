@@ -125,6 +125,8 @@ type
     metrics_label*: string
     free_queue*: seq[string]
     last_keepalive_tick*: float64
+    bytes_sent*: int
+    bytes_received*: int
     when defined(dump_zen_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]
