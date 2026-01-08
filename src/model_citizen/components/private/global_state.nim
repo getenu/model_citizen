@@ -43,5 +43,5 @@ declare_public_counter received_message_counter,
 declare_public_counter dropped_message_counter,
   "Messages dropped", name = "zen_dropped_messages", labels = ["ctx_label"]
 
-declare_public_counter boops_counter,
-  "Boops", name = "zen_boops", labels = ["ctx_label"]
+declare_public_counter ticks_counter,
+  "Ticks", name = "zen_ticks", labels = ["ctx_label"]

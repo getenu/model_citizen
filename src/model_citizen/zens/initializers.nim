@@ -103,7 +103,7 @@ proc defaults[T, O](
       for sub in ctx.subscribers:
         if sub.ctx_id notin op_ctx.source:
           ctx.send_msg(sub)
-    ctx.boop_reactor
+    ctx.tick_reactor
 
   self.build_message = proc(
       self: ref ZenBase, change: BaseChange, id, trace: string

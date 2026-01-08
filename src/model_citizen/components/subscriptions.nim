@@ -23,7 +23,7 @@ privileged
 proc `$`*(self: Subscription): string =
   \"{self.kind} subscription for {self.ctx_id}"
 
-proc boop*(
+proc tick*(
   self: ZenContext,
   messages = int.high,
   max_duration = self.max_recv_duration,
@@ -191,7 +191,7 @@ proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
           sub, Message(kind: Destroy, object_id: self.id), op_ctx, self.flags
         )
 
-  self.ctx.boop_reactor
+  self.ctx.tick_reactor
 
 proc pack_messages(msgs: seq[Message]): seq[Message] =
   if msgs.len > 1:
@@ -250,7 +250,7 @@ proc publish_changes*[T, O](
         for msg in msgs:
           self.ctx.send(sub, msg, op_ctx, self.flags)
 
-    self.ctx.boop_reactor
+    self.ctx.tick_reactor
 
 proc add_subscriber*(
     self: ZenContext,
@@ -301,7 +301,7 @@ proc subscribe*(self: ZenContext, ctx: ZenContext, bidirectional = true) =
     remote_objects,
   )
 
-  self.boop(blocking = false, min_duration = Duration.default)
+  self.tick(blocking = false, min_duration = Duration.default)
   self.subscribing = false
   self.process_value_initializers
 
@@ -364,7 +364,7 @@ proc subscribe*(
     if callback != nil:
       callback()
 
-  self.boop(poll = false)
+  self.tick(poll = false)
   self.subscribing = false
   self.process_value_initializers
 
@@ -373,7 +373,7 @@ proc subscribe*(
 
     self.add_subscriber(sub, push_all = false, remote_objects)
 
-  self.boop(blocking = false)
+  self.tick(blocking = false)
 
 proc process_message(self: ZenContext, msg: Message) =
   privileged
@@ -478,7 +478,7 @@ proc track*[T, O](
 proc untrack_on_destroy*(self: ref ZenBase, zid: ZID) =
   self.bound_zids.add(zid)
 
-proc boop*(
+proc tick*(
     self: ZenContext,
     messages = int.high,
     max_duration = self.max_recv_duration,
@@ -486,7 +486,7 @@ proc boop*(
     blocking = self.blocking_recv,
     poll = true,
 ) {.gcsafe.} =
-  boops_counter.inc(label_values = [self.metrics_label])
+  ticks_counter.inc(label_values = [self.metrics_label])
 
   pressure_gauge.set(self.pressure, label_values = [self.metrics_label])
   object_pool_gauge.set(
@@ -535,7 +535,7 @@ proc boop*(
 
     if ?self.reactor:
       if poll:
-        self.boop_reactor
+        self.tick_reactor
 
       let messages = self.remote_messages
       self.remote_messages = @[]

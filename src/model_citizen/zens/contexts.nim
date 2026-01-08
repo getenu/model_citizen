@@ -24,7 +24,7 @@ proc init_metrics*(_: type ZenContext, labels: varargs[string]) =
     sent_message_counter.inc(0, label_values = [label])
     received_message_counter.inc(0, label_values = [label])
     dropped_message_counter.inc(0, label_values = [label])
-    boops_counter.inc(0, label_values = [label])
+    ticks_counter.inc(0, label_values = [label])
 
 proc pack_objects*(self: ZenContext) =
   if self.objects_need_packing:
@@ -131,7 +131,7 @@ proc pressure*(self: ZenContext): float =
 
   result = values.sum / float values.len
 
-proc boop_reactor*(self: ZenContext) =
+proc tick_reactor*(self: ZenContext) =
   privileged
   if ?self.reactor:
     self.reactor.tick
