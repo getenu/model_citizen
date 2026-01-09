@@ -1,5 +1,6 @@
 import std/[typetraits, macros, macrocache]
 import model_citizen/[core, components/private/tracking]
+import model_citizen/components/private/global_state
 import
   model_citizen/types {.all.},
   model_citizen/zens/[validations, operations, contexts, private]
@@ -57,6 +58,14 @@ proc defaults[T, O](
   log_defaults
 
   create_initializer(self)
+
+  # Register the Zen type name for debugging
+  const zen_type_id = Zen[T, O].tid
+  const zen_type_name = $Zen[T, O]
+  {.gcsafe.}:
+    if zen_type_id notin global_type_name_registry[]:
+      global_type_name_registry[][zen_type_id] = zen_type_name
+
   self.id =
     if id == "":
       generate_id()

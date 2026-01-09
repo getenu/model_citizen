@@ -37,9 +37,11 @@ proc lookup_type*(obj: ref RootObj, registered_type: var RegisteredType): bool =
 proc register_type(typ: type) =
   log_defaults
   let key = typ.type_id
+  const type_name = $typ
 
   with_lock:
     assert key notin global_type_registry[], "Type already registered"
+    global_type_name_registry[][key] = type_name
 
   let stringify =
     func (self: ref RootObj): string =

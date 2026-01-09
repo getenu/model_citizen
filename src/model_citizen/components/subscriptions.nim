@@ -206,9 +206,18 @@ proc send*(
     msg.id_mappings = new_mappings
     when defined(zen_debug_messages):
       inc self.messages_sent
+      inc self.messages_sent_by_kind[msg.kind]
       self.obj_bytes_sent += msg.obj.len
       inc self.messages_by_kind[msg.kind]
       self.obj_bytes_sent_by_kind[msg.kind] += msg.obj.len
+      if msg.object_id != "":
+        if msg.object_id notin self.obj_bytes_by_id:
+          self.obj_bytes_by_id[msg.object_id] = 0
+        self.obj_bytes_by_id[msg.object_id] += msg.obj.len
+      if msg.type_id != 0:
+        if msg.type_id notin self.obj_bytes_by_type:
+          self.obj_bytes_by_type[msg.type_id] = 0
+        self.obj_bytes_by_type[msg.type_id] += msg.obj.len
     let serialized = msg.to_flatty
     when defined(zen_debug_messages):
       self.pre_compression_bytes += serialized.len
@@ -223,6 +232,7 @@ proc send*(
     msg.id_mappings = new_mappings
     when defined(zen_debug_messages):
       inc self.messages_sent
+      inc self.messages_sent_by_kind[msg.kind]
       # obj is empty for NoOverwrite, track 0 bytes
       inc self.messages_by_kind[msg.kind]
     msg.obj = ""
@@ -735,3 +745,52 @@ template changes*[T, O](self: Zen[T, O], pause_me, body) =
 
 template changes*[T, O](self: Zen[T, O], body) =
   changes(self, true, body)
+
+when defined(zen_debug_messages):
+  proc get_type_name(tid: int): string =
+    {.gcsafe.}:
+      if tid in global_type_name_registry[]:
+        result = global_type_name_registry[][tid]
+      else:
+        result = "type_" & $tid
+
+  proc dump_message_stats*(self: ZenContext, label = "") =
+    ## Dump message statistics for debugging network sync issues.
+    echo "=== ZenContext Message Stats ", label, " ==="
+    echo "  bytes_sent: ", self.bytes_sent
+    echo "  bytes_received: ", self.bytes_received
+    echo "  messages_sent: ", self.messages_sent
+    echo "  messages_received: ", self.messages_received
+    echo "  obj_bytes_sent: ", self.obj_bytes_sent
+    echo "  obj_bytes_received: ", self.obj_bytes_received
+    echo "  pre_compression_bytes: ", self.pre_compression_bytes
+    echo ""
+    echo "  Messages SENT by kind:"
+    for kind in MessageKind:
+      if self.messages_sent_by_kind[kind] > 0:
+        echo "    ", kind, ": ", self.messages_sent_by_kind[kind], " msgs, ", self.obj_bytes_sent_by_kind[kind], " bytes"
+    echo ""
+    echo "  Messages by kind (total sent+recv):"
+    for kind in MessageKind:
+      if self.messages_by_kind[kind] > 0:
+        echo "    ", kind, ": ", self.messages_by_kind[kind], " msgs, sent=", self.obj_bytes_sent_by_kind[kind], " recv=", self.obj_bytes_recv_by_kind[kind]
+    echo ""
+    echo "  Top objects by bytes sent:"
+    var pairs: seq[(string, int)]
+    for id, bytes in self.obj_bytes_by_id:
+      pairs.add (id, bytes)
+    pairs.sort proc(a, b: (string, int)): int = b[1] - a[1]
+    for i, (id, bytes) in pairs:
+      if i >= 20:
+        break
+      echo "    ", id, ": ", bytes, " bytes"
+    echo ""
+    echo "  Bytes by type:"
+    var type_pairs: seq[(string, int)]
+    for tid, bytes in self.obj_bytes_by_type:
+      if bytes > 0:
+        type_pairs.add (get_type_name(tid), bytes)
+    type_pairs.sort proc(a, b: (string, int)): int = b[1] - a[1]
+    for (name, bytes) in type_pairs:
+      echo "    ", name, ": ", bytes, " bytes"
+    echo "=== End Stats ==="

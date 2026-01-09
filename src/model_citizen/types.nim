@@ -142,8 +142,11 @@ type
       obj_bytes_received*: int
       pre_compression_bytes*: int  # Total bytes before snappy compression
       messages_by_kind*: array[MessageKind, int]
+      messages_sent_by_kind*: array[MessageKind, int]  # Message count sent per kind
       obj_bytes_sent_by_kind*: array[MessageKind, int]
       obj_bytes_recv_by_kind*: array[MessageKind, int]
+      obj_bytes_by_id*: Table[string, int]  # Bytes sent per object ID
+      obj_bytes_by_type*: Table[int, int]   # Bytes sent per type ID
     when defined(dump_zen_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]
