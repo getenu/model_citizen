@@ -1,5 +1,8 @@
 import
-  std/[importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times, strutils]
+  std/[
+    importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times,
+    strutils,
+  ]
 
 import pkg/threading/channels {.all.}
 import pkg/[flatty, supersnappy]
@@ -32,7 +35,9 @@ proc get_or_assign_short_id(sub: Subscription, full_id: string): uint8 =
     sub.id_to_short[full_id] = result
     sub.short_to_id[result] = full_id
 
-proc encode_source(sub: Subscription, source: HashSet[string]): tuple[source: seq[uint8], mappings: seq[IdMapping]] =
+proc encode_source(
+    sub: Subscription, source: HashSet[string]
+): tuple[source: seq[uint8], mappings: seq[IdMapping]] =
   ## Convert source HashSet to short IDs, returning new mappings for unknown IDs.
   for full_id in source:
     let is_new = full_id notin sub.id_to_short
@@ -297,7 +302,7 @@ proc publish_changes*[T, O](
 ) =
   privileged
   log_defaults("model_citizen publishing")
-  debug "publish_changes", ctx = self.ctx, op_ctx
+  debug "publish_changes", op_ctx
   if self.ctx.subscribers.len > 0:
     var msgs: seq[Message]
     let id = self.id
@@ -410,7 +415,12 @@ proc subscribe*(
 
   let connection = self.reactor.connect(address, port)
   self.send(
-    Subscription(kind: Remote, ctx_id: "temp", connection: connection, last_sent_time: epoch_time()),
+    Subscription(
+      kind: Remote,
+      ctx_id: "temp",
+      connection: connection,
+      last_sent_time: epoch_time(),
+    ),
     Message(kind: Subscribe),
   )
 
@@ -443,7 +453,12 @@ proc subscribe*(
   # Create bidirectional subscription BEFORE processing messages so mappings get registered
   var bi_sub: Subscription = nil
   if bidirectional:
-    bi_sub = Subscription(kind: Remote, connection: connection, ctx_id: ctx_id, last_sent_time: epoch_time())
+    bi_sub = Subscription(
+      kind: Remote,
+      connection: connection,
+      ctx_id: ctx_id,
+      last_sent_time: epoch_time(),
+    )
     self.add_subscriber(bi_sub, push_all = false, remote_objects)
 
   self.tick(poll = false)
@@ -675,7 +690,10 @@ proc tick*(
             source_str = "unknown"
 
           var new_sub = Subscription(
-            kind: Remote, connection: raw_msg.conn, ctx_id: source_str, last_sent_time: epoch_time()
+            kind: Remote,
+            connection: raw_msg.conn,
+            ctx_id: source_str,
+            last_sent_time: epoch_time(),
           )
           # Register all mappings from the subscribe message
           new_sub.register_mappings(msg.id_mappings)
@@ -768,18 +786,32 @@ when defined(zen_debug_messages):
     echo "  Messages SENT by kind:"
     for kind in MessageKind:
       if self.messages_sent_by_kind[kind] > 0:
-        echo "    ", kind, ": ", self.messages_sent_by_kind[kind], " msgs, ", self.obj_bytes_sent_by_kind[kind], " bytes"
+        echo "    ",
+          kind,
+          ": ",
+          self.messages_sent_by_kind[kind],
+          " msgs, ",
+          self.obj_bytes_sent_by_kind[kind],
+          " bytes"
     echo ""
     echo "  Messages by kind (total sent+recv):"
     for kind in MessageKind:
       if self.messages_by_kind[kind] > 0:
-        echo "    ", kind, ": ", self.messages_by_kind[kind], " msgs, sent=", self.obj_bytes_sent_by_kind[kind], " recv=", self.obj_bytes_recv_by_kind[kind]
+        echo "    ",
+          kind,
+          ": ",
+          self.messages_by_kind[kind],
+          " msgs, sent=",
+          self.obj_bytes_sent_by_kind[kind],
+          " recv=",
+          self.obj_bytes_recv_by_kind[kind]
     echo ""
     echo "  Top objects by bytes sent:"
     var pairs: seq[(string, int)]
     for id, bytes in self.obj_bytes_by_id:
       pairs.add (id, bytes)
-    pairs.sort proc(a, b: (string, int)): int = b[1] - a[1]
+    pairs.sort proc(a, b: (string, int)): int =
+      b[1] - a[1]
     for i, (id, bytes) in pairs:
       if i >= 20:
         break
@@ -790,7 +822,8 @@ when defined(zen_debug_messages):
     for tid, bytes in self.obj_bytes_by_type:
       if bytes > 0:
         type_pairs.add (get_type_name(tid), bytes)
-    type_pairs.sort proc(a, b: (string, int)): int = b[1] - a[1]
+    type_pairs.sort proc(a, b: (string, int)): int =
+      b[1] - a[1]
     for (name, bytes) in type_pairs:
       echo "    ", name, ": ", bytes, " bytes"
     echo "=== End Stats ==="

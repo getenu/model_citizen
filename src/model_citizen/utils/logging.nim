@@ -1,4 +1,5 @@
-import model_citizen/types
+import std/sets
+import model_citizen/types {.all.}
 import model_citizen/components/private/global_state
 const chronicles_enabled* {.strdefine.} = "off"
 
@@ -6,12 +7,23 @@ when chronicles_enabled == "on":
   import pkg/chronicles
   export chronicles
 
+  # Format types for concise logging
+  chronicles.format_it(ZenContext): it.id
+  chronicles.format_it(Subscription): $it.kind & " sub for " & it.ctx_id
+  chronicles.format_it(OperationContext):
+    if it.source.len == 0:
+      "(no source)"
+    else:
+      "source=" & $it.source
+  chronicles.format_it(Message):
+    $it.kind & " " & it.object_id & " obj=" & $it.obj.len & "b"
+
   # Must be explicitly called from generic procs due to
   # https://github.com/status-im/nim-chronicles/issues/121
   template log_defaults*(log_topics = "model_citizen") =
     log_scope:
       topics = log_topics
-      thread_ctx = "ZenContext " & active_ctx.id
+      thread_ctx = active_ctx.id
 
 else:
   # Don't include chronicles unless it's specifically enabled.
