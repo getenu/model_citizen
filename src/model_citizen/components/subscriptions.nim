@@ -177,7 +177,6 @@ proc send*(
     flags = default_flags,
 ) =
   log_defaults("model_citizen networking")
-  sent_message_counter.inc(label_values = [self.metrics_label])
   when defined(zen_trace):
     if sub.ctx_id notin self.last_msg_id:
       self.last_msg_id[sub.ctx_id] = 1
@@ -196,38 +195,38 @@ proc send*(
   debug "sending message", msg
 
   var msg = msg
+
+  when defined(metrics):
+    let kind_str = $msg.kind
+    let type_str =
+      if msg.type_id == 0: "untyped"
+      else: get_type_name(msg.type_id)
+
   if sub.kind == Local and SyncLocal in flags:
     # Local: just use the HashSet, no encoding needed
     msg.source_set = source
+    when defined(metrics):
+      sent_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Local and SyncAllNoOverwrite in flags:
     msg.source_set = source
     msg.obj = ""
+    when defined(metrics):
+      sent_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
     sub.send_or_buffer(msg, self.buffer)
   elif sub.kind == Remote and SyncRemote in flags:
     # Remote: encode source to short IDs
     let (encoded_source, new_mappings) = sub.encode_source(source)
     msg.source = encoded_source
     msg.id_mappings = new_mappings
-    when defined(zen_debug_messages):
-      inc self.messages_sent
-      inc self.messages_sent_by_kind[msg.kind]
-      self.obj_bytes_sent += msg.obj.len
-      inc self.messages_by_kind[msg.kind]
-      self.obj_bytes_sent_by_kind[msg.kind] += msg.obj.len
-      if msg.object_id != "":
-        if msg.object_id notin self.obj_bytes_by_id:
-          self.obj_bytes_by_id[msg.object_id] = 0
-        self.obj_bytes_by_id[msg.object_id] += msg.obj.len
-      if msg.type_id != 0:
-        if msg.type_id notin self.obj_bytes_by_type:
-          self.obj_bytes_by_type[msg.type_id] = 0
-        self.obj_bytes_by_type[msg.type_id] += msg.obj.len
+    let obj_len = msg.obj.len
     let serialized = msg.to_flatty
-    when defined(zen_debug_messages):
-      self.pre_compression_bytes += serialized.len
     let data = serialized.compress
-    self.bytes_sent += data.len
+    when defined(metrics):
+      sent_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
+      obj_bytes_sent_counter.inc(obj_len.float64, label_values = [self.metrics_label, kind_str, type_str])
+      pre_compression_bytes_counter.inc(serialized.len.float64, label_values = [self.metrics_label])
+      bytes_sent_counter.inc(data.len.float64, label_values = [self.metrics_label])
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
   elif sub.kind == Remote and SyncAllNoOverwrite in flags:
@@ -235,17 +234,13 @@ proc send*(
     let (encoded_source, new_mappings) = sub.encode_source(source)
     msg.source = encoded_source
     msg.id_mappings = new_mappings
-    when defined(zen_debug_messages):
-      inc self.messages_sent
-      inc self.messages_sent_by_kind[msg.kind]
-      # obj is empty for NoOverwrite, track 0 bytes
-      inc self.messages_by_kind[msg.kind]
     msg.obj = ""
     let serialized = msg.to_flatty
-    when defined(zen_debug_messages):
-      self.pre_compression_bytes += serialized.len
     let data = serialized.compress
-    self.bytes_sent += data.len
+    when defined(metrics):
+      sent_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
+      pre_compression_bytes_counter.inc(serialized.len.float64, label_values = [self.metrics_label])
+      bytes_sent_counter.inc(data.len.float64, label_values = [self.metrics_label])
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
 
@@ -331,6 +326,26 @@ proc publish_changes*[T, O](
         for msg in msgs:
           self.ctx.send(sub, msg, op_ctx, self.flags)
 
+    self.ctx.tick_reactor
+
+proc publish_bulk_assign*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
+  ## Publish the entire tracked value as a single BulkAssign message.
+  ## Used for efficient bulk updates instead of sending individual Assign messages.
+  privileged
+  log_defaults("model_citizen publishing")
+  debug "publish_bulk_assign", op_ctx
+  if self.ctx.subscribers.len > 0:
+    {.gcsafe.}:
+      let bin = self.tracked.to_flatty
+    let msg = Message(
+      kind: BulkAssign,
+      obj: bin,
+      object_id: self.id,
+      type_id: Zen[T, O].tid,
+    )
+    for sub in self.ctx.subscribers:
+      if sub.ctx_id notin op_ctx.source:
+        self.ctx.send(sub, msg, op_ctx, self.flags)
     self.ctx.tick_reactor
 
 proc add_subscriber*(
@@ -436,7 +451,8 @@ proc subscribe*(
         raise ConnectionError.init(\"Unable to connect to {address}:{port}")
 
     for msg in self.reactor.messages:
-      self.bytes_received += msg.data.len
+      when defined(metrics):
+        bytes_received_counter.inc(msg.data.len.float64, label_values = [self.metrics_label])
       if msg.data.starts_with("ACK:"):
         if bidirectional:
           let pieces = msg.data.split(":")
@@ -488,7 +504,12 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
 
   assert self.id notin source
 
-  received_message_counter.inc(label_values = [self.metrics_label])
+  when defined(metrics):
+    let kind_str = $msg.kind
+    let type_str =
+      if msg.type_id == 0: "untyped"
+      else: get_type_name(msg.type_id)
+    received_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
   # when defined(zen_trace):
   #   let src = self.name & "-" & source_str
   #   if src in self.last_received_id:
@@ -664,11 +685,14 @@ proc tick*(
         if raw_msg.data == "PING":
           continue
         var msg = raw_msg.data.uncompress.from_flatty(Message, self)
-        when defined(zen_debug_messages):
-          inc self.messages_received
-          self.obj_bytes_received += msg.obj.len
-          inc self.messages_by_kind[msg.kind]
-          self.obj_bytes_recv_by_kind[msg.kind] += msg.obj.len
+        when defined(metrics):
+          let kind_str = $msg.kind
+          let type_str =
+            if msg.type_id == 0: "untyped"
+            else: get_type_name(msg.type_id)
+          bytes_received_counter.inc(raw_msg.data.len.float64, label_values = [self.metrics_label])
+          received_message_counter.inc(label_values = [self.metrics_label, kind_str, type_str])
+          obj_bytes_received_counter.inc(msg.obj.len.float64, label_values = [self.metrics_label, kind_str, type_str])
 
         # Find subscription for this connection to decode source
         var sub: Subscription = nil
@@ -705,13 +729,15 @@ proc tick*(
           var objects = self.objects.keys.to_seq.join(":")
 
           let ack_data = "ACK:" & self.id & ":" & objects
-          self.bytes_sent += ack_data.len
+          when defined(metrics):
+            bytes_sent_counter.inc(ack_data.len.float64, label_values = [self.metrics_label])
+            sent_message_counter.inc(label_values = [self.metrics_label, "Subscribe", "ack"])
           self.reactor.send(raw_msg.conn, ack_data)
-          sent_message_counter.inc(label_values = [self.metrics_label])
           self.reactor.tick
           self.dead_connections &= self.reactor.dead_connections
           for msg in self.reactor.messages:
-            self.bytes_received += msg.data.len
+            when defined(metrics):
+              bytes_received_counter.inc(msg.data.len.float64, label_values = [self.metrics_label])
           self.remote_messages &= self.reactor.messages
         else:
           # Regular message - decode source using subscription's mappings
@@ -763,67 +789,3 @@ template changes*[T, O](self: Zen[T, O], pause_me, body) =
 
 template changes*[T, O](self: Zen[T, O], body) =
   changes(self, true, body)
-
-when defined(zen_debug_messages):
-  proc get_type_name(tid: int): string =
-    {.gcsafe.}:
-      if tid in global_type_name_registry[]:
-        result = global_type_name_registry[][tid]
-      else:
-        result = "type_" & $tid
-
-  proc dump_message_stats*(self: ZenContext, label = "") =
-    ## Dump message statistics for debugging network sync issues.
-    echo "=== ZenContext Message Stats ", label, " ==="
-    echo "  bytes_sent: ", self.bytes_sent
-    echo "  bytes_received: ", self.bytes_received
-    echo "  messages_sent: ", self.messages_sent
-    echo "  messages_received: ", self.messages_received
-    echo "  obj_bytes_sent: ", self.obj_bytes_sent
-    echo "  obj_bytes_received: ", self.obj_bytes_received
-    echo "  pre_compression_bytes: ", self.pre_compression_bytes
-    echo ""
-    echo "  Messages SENT by kind:"
-    for kind in MessageKind:
-      if self.messages_sent_by_kind[kind] > 0:
-        echo "    ",
-          kind,
-          ": ",
-          self.messages_sent_by_kind[kind],
-          " msgs, ",
-          self.obj_bytes_sent_by_kind[kind],
-          " bytes"
-    echo ""
-    echo "  Messages by kind (total sent+recv):"
-    for kind in MessageKind:
-      if self.messages_by_kind[kind] > 0:
-        echo "    ",
-          kind,
-          ": ",
-          self.messages_by_kind[kind],
-          " msgs, sent=",
-          self.obj_bytes_sent_by_kind[kind],
-          " recv=",
-          self.obj_bytes_recv_by_kind[kind]
-    echo ""
-    echo "  Top objects by bytes sent:"
-    var pairs: seq[(string, int)]
-    for id, bytes in self.obj_bytes_by_id:
-      pairs.add (id, bytes)
-    pairs.sort proc(a, b: (string, int)): int =
-      b[1] - a[1]
-    for i, (id, bytes) in pairs:
-      if i >= 20:
-        break
-      echo "    ", id, ": ", bytes, " bytes"
-    echo ""
-    echo "  Bytes by type:"
-    var type_pairs: seq[(string, int)]
-    for tid, bytes in self.obj_bytes_by_type:
-      if bytes > 0:
-        type_pairs.add (get_type_name(tid), bytes)
-    type_pairs.sort proc(a, b: (string, int)): int =
-      b[1] - a[1]
-    for (name, bytes) in type_pairs:
-      echo "    ", name, ": ", bytes, " bytes"
-    echo "=== End Stats ==="

@@ -59,12 +59,13 @@ proc defaults[T, O](
 
   create_initializer(self)
 
-  # Register the Zen type name for debugging
+  # Register the Zen type name for metrics/debugging
   const zen_type_id = Zen[T, O].tid
   const zen_type_name = $Zen[T, O]
   {.gcsafe.}:
-    if zen_type_id notin global_type_name_registry[]:
-      global_type_name_registry[][zen_type_id] = zen_type_name
+    if zen_type_id notin global_type_registry[]:
+      global_type_registry[][zen_type_id] =
+        RegisteredType(tid: zen_type_id, name: zen_type_name)
 
   self.id =
     if id == "":
@@ -97,8 +98,7 @@ proc defaults[T, O](
         obj: bin,
         flags: flags,
         type_id: zen_type_id,
-        object_id: id,
-        # source is set by send() based on subscription type
+        object_id: id, # source is set by send() based on subscription type
       )
 
       when defined(zen_trace):
@@ -166,6 +166,12 @@ proc defaults[T, O](
 
     if msg.kind == Destroy:
       self.destroy
+      return
+
+    if msg.kind == BulkAssign:
+      {.gcsafe.}:
+        let value = msg.obj.from_flatty(T, self.ctx)
+      self.`value=`(value, op_ctx = op_ctx)
       return
 
     when O is Zen:
@@ -257,7 +263,9 @@ proc init*(
   ctx.setup_op_ctx
   result = Zen[T, T](flags: flags).defaults(ctx, id, op_ctx)
 
-proc init*[T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string | ptr](
+proc init*[
+    T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string | ptr
+](
     _: type Zen,
     tracked: T,
     flags = default_flags,

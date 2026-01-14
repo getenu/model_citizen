@@ -171,7 +171,7 @@ proc process_changes*[T: seq | set, O](
   when O isnot Zen and O is ref:
     self.ctx.ref_count(changes, self.id)
 
-  self.publish_changes(changes, op_ctx)
+  self.publish_bulk_assign(op_ctx)
   self.trigger_callbacks(changes)
 
 proc process_changes*[K, V](
@@ -205,7 +205,7 @@ proc process_changes*[K, V](
   when V isnot Zen and V is ref:
     self.ctx.ref_count(changes, self.id)
 
-  self.publish_changes(changes, op_ctx)
+  self.publish_bulk_assign(op_ctx)
   self.trigger_callbacks(changes)
 
 template mutate_and_touch*(touch, op_ctx, body: untyped) =

@@ -126,6 +126,105 @@ proc run*() =
     check c.value == "buzz"
     check d.value == "world"
 
+  test "bulk assign seq triggers multiple callbacks on both sides":
+    # Test that .value= on a seq triggers callbacks for each changed item
+    var
+      ctx1 = ZenContext.init(id = "ctx1")
+      ctx2 = ZenContext.init(id = "ctx2")
+      seq1 = ZenSeq[string].init(id = "seq", ctx = ctx1)
+      seq2 = ZenSeq[string].init(id = "seq", ctx = ctx2)
+
+    ctx2.subscribe(ctx1)
+
+    var ctx1_added = 0
+    var ctx2_added = 0
+
+    seq1.changes:
+      if added:
+        inc ctx1_added
+
+    seq2.changes:
+      if added:
+        inc ctx2_added
+
+    # Bulk assign 5 items
+    seq1.value = @["a", "b", "c", "d", "e"]
+
+    # Verify ctx1 got 5 callbacks (one per item)
+    check ctx1_added == 5
+
+    # Sync to ctx2
+    ctx2.tick
+
+    # Verify ctx2 also got 5 callbacks
+    check ctx2_added == 5
+
+    # Verify data is correct on both sides
+    check seq1.value == @["a", "b", "c", "d", "e"]
+    check seq2.value == @["a", "b", "c", "d", "e"]
+
+  test "bulk assign table triggers multiple callbacks on both sides":
+    var
+      ctx1 = ZenContext.init(id = "ctx1")
+      ctx2 = ZenContext.init(id = "ctx2")
+      table1 = ZenTable[string, int].init(id = "table", ctx = ctx1)
+      table2 = ZenTable[string, int].init(id = "table", ctx = ctx2)
+
+    ctx2.subscribe(ctx1)
+
+    var ctx1_added = 0
+    var ctx2_added = 0
+
+    table1.changes:
+      if added:
+        inc ctx1_added
+
+    table2.changes:
+      if added:
+        inc ctx2_added
+
+    # Bulk assign table with 4 entries
+    table1.value = {"one": 1, "two": 2, "three": 3, "four": 4}.toTable
+
+    check ctx1_added == 4
+
+    ctx2.tick
+
+    check ctx2_added == 4
+    check table1.value == {"one": 1, "two": 2, "three": 3, "four": 4}.toTable
+    check table2.value == {"one": 1, "two": 2, "three": 3, "four": 4}.toTable
+
+  test "bulk assign set triggers multiple callbacks on both sides":
+    var
+      ctx1 = ZenContext.init(id = "ctx1")
+      ctx2 = ZenContext.init(id = "ctx2")
+      set1 = ZenSet[char].init(id = "set", ctx = ctx1)
+      set2 = ZenSet[char].init(id = "set", ctx = ctx2)
+
+    ctx2.subscribe(ctx1)
+
+    var ctx1_added = 0
+    var ctx2_added = 0
+
+    set1.changes:
+      if added:
+        inc ctx1_added
+
+    set2.changes:
+      if added:
+        inc ctx2_added
+
+    # Bulk assign set with 3 items
+    set1.value = {'x', 'y', 'z'}
+
+    check ctx1_added == 3
+
+    ctx2.tick
+
+    check ctx2_added == 3
+    check set1.value == {'x', 'y', 'z'}
+    check set2.value == {'x', 'y', 'z'}
+
 when is_main_module:
   Zen.bootstrap
   run()

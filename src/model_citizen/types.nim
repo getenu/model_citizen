@@ -27,6 +27,7 @@ type
     Touch
     Subscribe
     Packed
+    BulkAssign
 
   BaseChange* = ref object of RootObj
     changes*: set[ChangeKind]
@@ -80,8 +81,9 @@ type
     obj*: ref RootObj
     references*: HashSet[string]
 
-  RegisteredType = object
+  RegisteredType* = object
     tid*: int
+    name*: string
     stringify*: proc(self: ref RootObj): string {.no_side_effect.}
     parse*:
       proc(ctx: ZenContext, clone_from: string): ref RootObj {.no_side_effect.}
@@ -133,20 +135,6 @@ type
     metrics_label*: string
     free_queue*: seq[string]
     last_keepalive_tick*: float64
-    bytes_sent*: int
-    bytes_received*: int
-    when defined(zen_debug_messages):
-      messages_sent*: int
-      messages_received*: int
-      obj_bytes_sent*: int
-      obj_bytes_received*: int
-      pre_compression_bytes*: int  # Total bytes before snappy compression
-      messages_by_kind*: array[MessageKind, int]
-      messages_sent_by_kind*: array[MessageKind, int]  # Message count sent per kind
-      obj_bytes_sent_by_kind*: array[MessageKind, int]
-      obj_bytes_recv_by_kind*: array[MessageKind, int]
-      obj_bytes_by_id*: Table[string, int]  # Bytes sent per object ID
-      obj_bytes_by_type*: Table[int, int]   # Bytes sent per type ID
     when defined(dump_zen_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]

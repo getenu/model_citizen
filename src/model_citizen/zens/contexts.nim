@@ -21,10 +21,11 @@ proc init_metrics*(_: type ZenContext, labels: varargs[string]) =
     ref_pool_gauge.set(0.0, label_values = [label])
     buffer_gauge.set(0.0, label_values = [label])
     chan_remaining_gauge.set(0.0, label_values = [label])
-    sent_message_counter.inc(0, label_values = [label])
-    received_message_counter.inc(0, label_values = [label])
     dropped_message_counter.inc(0, label_values = [label])
     ticks_counter.inc(0, label_values = [label])
+    bytes_sent_counter.inc(0, label_values = [label])
+    bytes_received_counter.inc(0, label_values = [label])
+    pre_compression_bytes_counter.inc(0, label_values = [label])
 
 proc pack_objects*(self: ZenContext) =
   if self.objects_need_packing:
@@ -137,7 +138,8 @@ proc tick_reactor*(self: ZenContext) =
     self.reactor.tick
     self.dead_connections &= self.reactor.dead_connections
     for msg in self.reactor.messages:
-      self.bytes_received += msg.data.len
+      when defined(metrics):
+        bytes_received_counter.inc(msg.data.len.float64, label_values = [self.metrics_label])
     self.remote_messages &= self.reactor.messages
 
 proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
@@ -162,7 +164,8 @@ proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
   # Send keepalive pings to idle remote subscribers
   for sub in self.subscribers:
     if sub.kind == Remote and sub.last_sent_time + keepalive_interval <= now:
-      self.bytes_sent += 4  # "PING"
+      when defined(metrics):
+        bytes_sent_counter.inc(4.0, label_values = [self.metrics_label])  # "PING"
       self.reactor.send(sub.connection, "PING")
       sub.last_sent_time = now
 

@@ -34,6 +34,14 @@ proc lookup_type*(obj: ref RootObj, registered_type: var RegisteredType): bool =
   if not result:
     debug "type not registered", type_name = obj.base_type
 
+proc get_type_name*(tid: int): string =
+  ## Get the registered name for a type ID.
+  var registered_type: RegisteredType
+  if lookup_type(tid, registered_type):
+    result = registered_type.name
+  else:
+    fail \"Type not registered: {tid}"
+
 proc register_type(typ: type) =
   log_defaults
   let key = typ.type_id
@@ -41,7 +49,6 @@ proc register_type(typ: type) =
 
   with_lock:
     assert key notin global_type_registry[], "Type already registered"
-    global_type_name_registry[][key] = type_name
 
   let stringify =
     func (self: ref RootObj): string =
@@ -76,7 +83,7 @@ proc register_type(typ: type) =
 
   with_lock:
     global_type_registry[][key] =
-      RegisteredType(stringify: stringify, parse: parse, tid: key)
+      RegisteredType(tid: key, name: type_name, stringify: stringify, parse: parse)
 
 proc is_zen(node: NimNode): bool =
   if node.kind == nnk_sym and node.str_val == "ZenBase":
