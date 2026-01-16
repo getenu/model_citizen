@@ -283,18 +283,6 @@ proc destroy*[T, O](self: Ed[T, O], publish = true) =
   if publish:
     self.publish_destroy OperationContext(source: [self.ctx.id].toHashSet)
 
-proc `~=`*[T, O](a: Ed[T, O], b: T) =
-  `value=`(a, b)
-
-proc `~==`*[T, O](a: Ed[T, O], b: T): bool =
-  value(a) == b
-
-proc `~==~`*[T, O](a: Ed[T, O], b: Ed[T, O]): bool =
-  value(a) == value(b)
-
-proc `?~`*[T](self: EdValue[T]): bool =
-  ? ~self
-
 iterator items*[T](self: EdSet[T] | EdSeq[T]): T =
   privileged
   assert self.valid

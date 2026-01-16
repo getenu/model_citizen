@@ -91,7 +91,7 @@ proc run*() =
       Flag3
       Flag4
 
-    var s = ~{Flag1, Flag2}
+    var s = Ed.init({Flag1, Flag2})
 
     check:
       Flag2 in s
@@ -118,13 +118,13 @@ proc run*() =
     check:
       added == {Flag3}
       removed == {}
-      s ~== {Flag1, Flag2, Flag3}
+      s.value == {Flag1, Flag2, Flag3}
 
     s -= {Flag1, Flag2}
     check:
       added == {}
       removed == {Flag1, Flag2}
-      s ~== {Flag3}
+      s.value == {Flag3}
 
     s.value = {Flag4, Flag1}
     check:
@@ -143,11 +143,11 @@ proc run*() =
           also_removed.incl(c.item)
 
     s.untrack(zid)
-    s ~= {Flag2, Flag3}
+    s.value = {Flag2, Flag3}
     check:
       added == {}
       removed == {}
-      s ~== {Flag2, Flag3}
+      s.value == {Flag2, Flag3}
       also_added == {Flag2, Flag3}
       also_removed == {Flag1, Flag4}
     s.clear()
@@ -155,7 +155,7 @@ proc run*() =
 
   test "seqs":
     var
-      s = ~seq[string]
+      s = EdSeq[string].init
       added_items {.threadvar.}: seq[string]
       removed_items {.threadvar.}: seq[string]
 
@@ -187,14 +187,14 @@ proc run*() =
       Flag2
       Flag3
 
-    var a = ~{Flag1, Flag3}
+    var a = Ed.init({Flag1, Flag3})
 
   test "table literals":
-    var a = ~Table[int, EdSeq[string]]
+    var a = EdTable[int, EdSeq[string]].init
     a.track proc(changes, _: auto) {.gcsafe.} =
       discard
-    a[1] = ~(@["nim"])
-    a[5] = ~(@["vin", "rw"])
+    a[1] = EdSeq[string].init(@["nim"])
+    a[5] = EdSeq[string].init(@["vin", "rw"])
     a.clear
 
   test "touch table":
@@ -210,17 +210,17 @@ proc run*() =
     a.untrack_all
 
   test "primitive_table":
-    var a = ~Table[int, int]
+    var a = EdTable[int, int].init
     a[1] = 2
 
   test "nested":
     var a = EdTable[int, EdSeq[int]].init
-    a[1] = ~(@[1, 2])
+    a[1] = EdSeq[int].init(@[1, 2])
     a[1] += 3
 
   test "nested_2":
-    var a = ~{1: ~(@[1])}.to_table
-    a[1] = ~(@[1, 2])
+    var a = EdTable[int, EdSeq[int]].init({1: EdSeq[int].init(@[1])}.to_table)
+    a[1] = EdSeq[int].init(@[1, 2])
     a[1] += 3
 
   test "nested_changes":
@@ -229,11 +229,18 @@ proc run*() =
       Flag1
       Flag2
 
-    let buffers =
-      ~(
-        {1: ~({1: ~(@[~{Flag1}, ~{Flag2}], flags = flags)}.to_table, flags = flags)}.to_table,
-        flags = flags,
-      )
+    let innerSeq = EdSeq[EdSet[Flags]].init(
+      @[EdSet[Flags].init({Flag1}, flags = flags), EdSet[Flags].init({Flag2}, flags = flags)],
+      flags = flags
+    )
+    let innerTable = EdTable[int, EdSeq[EdSet[Flags]]].init(
+      {1: innerSeq}.to_table,
+      flags = flags
+    )
+    let buffers = EdTable[int, EdTable[int, EdSeq[EdSet[Flags]]]].init(
+      {1: innerTable}.to_table,
+      flags = flags
+    )
     var id = buffers.count_changes
 
     # we're watching the top level object. Any child change will
@@ -248,9 +255,9 @@ proc run*() =
     1.changes:
       buffers[1][1][0] -= {Flag1, Flag2}
     1.changes:
-      buffers[1][1] += ~{Flag1, Flag2}
+      buffers[1][1] += EdSet[Flags].init({Flag1, Flag2}, flags = flags)
     1.changes:
-      buffers[1][1] = ~(@[~{Flag1}], flags = flags)
+      buffers[1][1] = EdSeq[EdSet[Flags]].init(@[EdSet[Flags].init({Flag1}, flags = flags)], flags = flags)
 
     # unlink
     buffers[1][1][0].clear
@@ -267,8 +274,15 @@ proc run*() =
       # Added and Removed changes
     buffers.untrack(id)
 
-    buffers[1] =
-      ~({1: ~(@[~({Flag1}, flags = flags)], flags = flags)}.to_table, flags = flags)
+    let newInnerSeq = EdSeq[EdSet[Flags]].init(
+      @[EdSet[Flags].init({Flag1}, flags = flags)],
+      flags = flags
+    )
+    let newInnerTable = EdTable[int, EdSeq[EdSet[Flags]]].init(
+      {1: newInnerSeq}.to_table,
+      flags = flags
+    )
+    buffers[1] = newInnerTable
     id = buffers[1][1][0].count_changes
     1.changes:
       buffers[1][1][0] += {Flag1, Flag2}
@@ -321,8 +335,8 @@ proc run*() =
       Flag1
       Flag2
 
-    var a = ~seq[int]
-    var b = ~set[TestFlag]
+    var a = EdSeq[int].init
+    var b = EdSet[TestFlag].init
     check:
       a is Ed[seq[int], int]
       b is Ed[set[TestFlag], TestFlag]
@@ -343,8 +357,8 @@ proc run*() =
         _: type Unit, id = 0, flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
     ): Unit =
       result = Unit(id: id)
-      result.units = ~(seq[Unit], flags)
-      result.flags = ~(set[UnitFlags], flags)
+      result.units = EdSeq[Unit].init(flags = flags)
+      result.flags = EdSet[UnitFlags].init(flags = flags)
 
     var a = Unit.init
     var id = a.units.count_changes
@@ -399,19 +413,19 @@ proc run*() =
       REMOVED: 11,
       ADDED: 12
     }:
-      a ~= 5
-      a ~= 10
+      a.value = 5
+      a.value = 10
       a.touch 10
       a.touch 11
       a.touch 12
 
-    let b = ~4
+    let b = ed(4)
     b.assert_changes {REMOVED: 4, ADDED: 11}:
-      b ~= 11
+      b.value = 11
 
-    let c = ~"enu"
+    let c = ed("enu")
     c.assert_changes {REMOVED: "enu", ADDED: "ENU"}:
-      c ~= "ENU"
+      c.value = "ENU"
 
   test "refs":
     type ARef = ref object of RootObj
@@ -419,48 +433,48 @@ proc run*() =
 
     let (r1, r2, r3) = (ARef(id: 1), ARef(id: 2), ARef(id: 3))
 
-    let a = ~r1
+    let a = ed(r1)
     a.assert_changes {REMOVED: r1, ADDED: r2, REMOVED: r2, ADDED: r3}:
-      a ~= r2
-      a ~= r3
+      a.value = r2
+      a.value = r3
 
   test "pausing":
     var s = EdValue[string].init
     let zid = s.count_changes
     2.changes:
-      s ~= "one"
+      s.value = "one"
     s.pause zid:
       0.changes:
-        s ~= "two"
+        s.value = "two"
     2.changes:
-      s ~= "three"
+      s.value = "three"
     let zids = @[zid, 1234]
     s.pause zids:
       0.changes:
-        s ~= "four"
+        s.value = "four"
     2.changes:
-      s ~= "five"
+      s.value = "five"
     s.pause zid, 1234:
       0.changes:
-        s ~= "six"
+        s.value = "six"
     2.changes:
-      s ~= "seven"
+      s.value = "seven"
     s.pause:
       0.changes:
-        s ~= "eight"
+        s.value = "eight"
     2.changes:
-      s ~= "nine"
+      s.value = "nine"
 
     var calls = 0
     s.changes:
       calls += 1
-      s ~= "cal"
+      s.value = "cal"
 
-    s ~= "vin"
+    s.value = "vin"
     check calls == 2
 
   test "closed":
-    var s = ~""
+    var s = ed("")
     var changed = false
 
     s.track proc(changes: auto) {.gcsafe.} =
@@ -487,8 +501,8 @@ proc run*() =
       result.init_ed_fields
 
     let m = Model.init
-    m.ed_field ~= "test"
-    check m.ed_field ~== "test"
+    m.ed_field.value = "test"
+    check m.ed_field.value == "test"
 
   test "sync":
     type
@@ -512,15 +526,15 @@ proc run*() =
       var s2 = EdValue[string](ctx2[s1])
       check s2.ctx != nil
 
-      s1 ~= "sync me"
+      s1.value = "sync me"
       ctx2.tick
 
-      check ~s2 == ~s1
+      check s2.value == s1.value
 
       s1 &= " and me"
       ctx2.tick
 
-      check ~s2 == ~s1 and ~s2 == "sync me and me"
+      check s2.value == s1.value and s2.value == "sync me and me"
 
       var msg = "hello world"
       var another_msg = "another"
@@ -528,10 +542,10 @@ proc run*() =
       ctx2.tick
       var dest = Tree.init_from(src, ctx = ctx2)
 
-      src.zen ~= "hello world"
+      src.zen.value = "hello world"
       ctx2.tick
-      check ~src.zen == "hello world"
-      check ~dest.zen == "hello world"
+      check src.zen.value == "hello world"
+      check dest.zen.value == "hello world"
 
       let thing = Thing(id: "Vin")
       src.things += thing
@@ -552,10 +566,10 @@ proc run*() =
       var t = Thing(id: "Scott")
       ctx2.tick
       var remote_container = Container.init_from(container, ctx = ctx2)
-      container.thing1 ~= t
-      container.thing2 ~= t
+      container.thing1.value = t
+      container.thing2.value = t
 
-      check container.thing1 ~==~ container.thing2
+      check container.thing1.value == container.thing2.value
 
       sleep(100)
       ctx2.tick
@@ -573,7 +587,7 @@ proc run*() =
       ctx3.subscribe(ctx2, bidirectional = false)
       Ed.thread_ctx = ctx1
       check ctx3.len == ctx1.len
-      src.values += ~("", ctx = ctx1)
+      src.values += Ed.init("", ctx = ctx1)
       check ctx1.len != ctx2.len and ctx1.len != ctx3.len
       ctx2.tick
       check ctx1.len == ctx2.len and ctx1.len != ctx3.len
@@ -584,7 +598,7 @@ proc run*() =
 
   test "delete":
     local_and_remote:
-      var a = ~("", ctx = ctx1)
+      var a = Ed.init("", ctx = ctx1)
       check ctx1.len == 1
       ctx2.tick
       check ctx1.len == 1

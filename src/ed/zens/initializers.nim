@@ -361,18 +361,6 @@ proc init*(
   ctx.setup_op_ctx
   result = EdTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
 
-proc ed_init_private*[K, V](
-    tracked: seq[(K, V)],
-    flags = DEFAULT_FLAGS,
-    ctx = ctx(),
-    id = "",
-    op_ctx = OperationContext(),
-): EdTable[K, V] =
-  ctx.setup_op_ctx
-  result = Ed.init(
-    tracked.to_table, flags = flags, ctx = ctx, id = id, op_ctx = op_ctx
-  )
-
 proc init*[T, O](
     self: var Ed[T, O],
     flags = DEFAULT_FLAGS,
@@ -398,19 +386,10 @@ proc init_from*[T: object or ref](
     when dest is Ed:
       dest = ctx[src]
 
-macro `~`*(body: untyped): untyped =
-  var args = body
-  if body.kind == nnk_tuple_constr:
-    args = new_nim_node(nnk_arg_list, body)
-    body.copy_children_to(args)
-
-  result = quote:
-    when compiles(value(`args`)):
-      value(`args`)
-    elif compiles(ed_init_private(`args`)):
-      ed_init_private(`args`)
-    else:
-      Ed.init(`args`)
+proc ed*[T](value: T): EdValue[T] =
+  ## Convenience constructor for EdValue. Creates an Ed container holding the given value.
+  ## Example: `let name = ed("hello")`
+  result = EdValue[T].init(value)
 
 macro bootstrap*(_: type Ed): untyped =
   result = new_stmt_list()
