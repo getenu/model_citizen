@@ -2,7 +2,7 @@ import std/[net, tables, times, options, sugar, math]
 import pkg/chronicles, pkg/threading/channels {.all.}
 
 import
-  model_citizen/[
+  ed/[
     core,
     types {.all.},
     utils/misc,
@@ -12,9 +12,9 @@ import
 
 import ./private
 
-export ZenContext
+export EdContext
 
-proc init_metrics*(_: type ZenContext, labels: varargs[string]) =
+proc init_metrics*(_: type EdContext, labels: varargs[string]) =
   for label in labels:
     pressure_gauge.set(0.0, label_values = [label])
     object_pool_gauge.set(0.0, label_values = [label])
@@ -26,28 +26,28 @@ proc init_metrics*(_: type ZenContext, labels: varargs[string]) =
     dropped_message_counter.inc(0, label_values = [label])
     ticks_counter.inc(0, label_values = [label])
 
-proc pack_objects*(self: ZenContext) =
+proc pack_objects*(self: EdContext) =
   if self.objects_need_packing:
-    var table: OrderedTable[string, ref ZenBase]
+    var table: OrderedTable[string, ref EdBase]
     for key, value in self.objects:
       if ?value:
         table[key] = value
     self.objects = table
     self.objects_need_packing = false
 
-proc contains*(self: ZenContext, id: string): bool =
+proc contains*(self: EdContext, id: string): bool =
   id in self.objects and self.objects[id] != nil
 
-proc contains*(self: ZenContext, zen: ref ZenBase): bool =
+proc contains*(self: EdContext, zen: ref EdBase): bool =
   assert zen.valid
   zen.id in self
 
-proc len*(self: ZenContext): int =
+proc len*(self: EdContext): int =
   self.pack_objects
   self.objects.len
 
 proc init*(
-    _: type ZenContext,
+    _: type EdContext,
     id = "thread-" & $get_thread_id(),
     listen_address = "",
     blocking_recv = false,
@@ -56,14 +56,14 @@ proc init*(
     max_recv_duration = Duration.default,
     min_recv_duration = Duration.default,
     label = "default",
-): ZenContext =
+): EdContext =
   privileged
   log_scope:
-    topics = "model_citizen"
+    topics = "ed"
 
-  debug "ZenContext initialized", id
+  debug "EdContext initialized", id
 
-  result = ZenContext(
+  result = EdContext(
     id: id,
     blocking_recv: blocking_recv,
     max_recv_duration: max_recv_duration,
@@ -88,24 +88,24 @@ proc init*(
     debug "listening"
     result.reactor = new_reactor(listen_address, port)
 
-proc thread_ctx*(t: type Zen): ZenContext =
+proc thread_ctx*(t: type Ed): EdContext =
   if active_ctx == nil:
-    active_ctx = ZenContext.init(id = "thread-" & $get_thread_id())
+    active_ctx = EdContext.init(id = "thread-" & $get_thread_id())
   active_ctx
 
-proc thread_ctx*(_: type ZenBase): ZenContext =
-  Zen.thread_ctx
+proc thread_ctx*(_: type EdBase): EdContext =
+  Ed.thread_ctx
 
-proc `thread_ctx=`*(_: type Zen, ctx: ZenContext) =
+proc `thread_ctx=`*(_: type Ed, ctx: EdContext) =
   active_ctx = ctx
 
-proc `$`*(self: ZenContext): string =
-  \"ZenContext {self.id}"
+proc `$`*(self: EdContext): string =
+  \"EdContext {self.id}"
 
-proc `[]`*[T, O](self: ZenContext, src: Zen[T, O]): Zen[T, O] =
-  result = Zen[T, O](self.objects[src.id])
+proc `[]`*[T, O](self: EdContext, src: Ed[T, O]): Ed[T, O] =
+  result = Ed[T, O](self.objects[src.id])
 
-proc `[]`*(self: ZenContext, id: string): ref ZenBase =
+proc `[]`*(self: EdContext, id: string): ref EdBase =
   result = self.objects[id]
 
 proc len*(self: Chan): int =
@@ -119,7 +119,7 @@ proc remaining*(self: Chan): int =
 proc full*(self: Chan): bool =
   self.remaining == 0
 
-proc pressure*(self: ZenContext): float =
+proc pressure*(self: EdContext): float =
   privileged
 
   let values = collect:
@@ -131,7 +131,7 @@ proc pressure*(self: ZenContext): float =
 
   result = values.sum / float values.len
 
-proc tick_reactor*(self: ZenContext) =
+proc tick_reactor*(self: EdContext) =
   privileged
   if ?self.reactor:
     self.reactor.tick
@@ -140,7 +140,7 @@ proc tick_reactor*(self: ZenContext) =
       self.bytes_received += msg.data.len
     self.remote_messages &= self.reactor.messages
 
-proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
+proc tick_keepalives*(self: EdContext) {.gcsafe.} =
   ## Lightweight tick that only sends keepalives if enough time has passed.
   ## Safe to call frequently - won't do anything if called too soon.
   ## Call this after long operations (file I/O, etc.) to prevent connection timeouts.
@@ -169,12 +169,12 @@ proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
   # Tick again to actually send the keepalive packets
   self.reactor.tick
 
-proc clear*(self: ZenContext) =
-  debug "Clearing ZenContext"
+proc clear*(self: EdContext) =
+  debug "Clearing EdContext"
   self.objects.clear
   self.objects_need_packing = false
 
-proc close*(self: ZenContext) =
+proc close*(self: EdContext) =
   if ?self.reactor:
     private_access Reactor
     self.reactor.socket.close()

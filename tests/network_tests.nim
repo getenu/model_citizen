@@ -1,6 +1,6 @@
 import std/[tables, sugar, unittest]
 import pkg/[flatty, chronicles, pretty]
-import model_citizen
+import ed
 from std/times import init_duration
 
 const recv_duration = init_duration(milliseconds = 10)
@@ -10,17 +10,17 @@ type Vector3 = array[3, float]
 proc run*() =
   test "4 way sync":
     var
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(
         id = "ctx2",
         listen_address = "127.0.0.1",
         min_recv_duration = recv_duration,
         blocking_recv = true,
       )
-      ctx3 = ZenContext.init(
+      ctx3 = EdContext.init(
         id = "ctx3", min_recv_duration = recv_duration, blocking_recv = true
       )
-      ctx4 = ZenContext.init(id = "ctx4")
+      ctx4 = EdContext.init(id = "ctx4")
 
     ctx2.subscribe(ctx1)
     ctx3.subscribe(ctx4)
@@ -29,10 +29,10 @@ proc run*() =
         ctx2.tick(blocking = false)
 
     var
-      a = ZenValue[string].init(id = "test1", ctx = ctx1)
-      b = ZenValue[string].init(id = "test1", ctx = ctx2)
-      c = ZenValue[string].init(id = "test1", ctx = ctx3)
-      d = ZenValue[string].init(id = "test1", ctx = ctx4)
+      a = EdValue[string].init(id = "test1", ctx = ctx1)
+      b = EdValue[string].init(id = "test1", ctx = ctx2)
+      c = EdValue[string].init(id = "test1", ctx = ctx3)
+      d = EdValue[string].init(id = "test1", ctx = ctx4)
 
     ctx1.tick
     ctx2.tick
@@ -49,23 +49,23 @@ proc run*() =
   test "trigger changes on subscribe":
     var
       count = 0
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(
         id = "ctx2",
         listen_address = "127.0.0.1",
         min_recv_duration = recv_duration,
         blocking_recv = true,
       )
-      ctx3 = ZenContext.init(
+      ctx3 = EdContext.init(
         id = "ctx3", min_recv_duration = recv_duration, blocking_recv = true
       )
-      ctx4 = ZenContext.init(id = "ctx4")
+      ctx4 = EdContext.init(id = "ctx4")
 
     var
-      a = Zen.init(@["a1", "a2"], id = "test2", ctx = ctx1)
-      b = Zen.init(@["b1", "b2"], id = "test2", ctx = ctx2)
-      c = Zen.init(@["c1", "c2"], id = "test2", ctx = ctx3)
-      d = Zen.init(@["d1", "d2"], id = "test2", ctx = ctx4)
+      a = Ed.init(@["a1", "a2"], id = "test2", ctx = ctx1)
+      b = Ed.init(@["b1", "b2"], id = "test2", ctx = ctx2)
+      c = Ed.init(@["c1", "c2"], id = "test2", ctx = ctx3)
+      d = Ed.init(@["d1", "d2"], id = "test2", ctx = ctx4)
 
     d.changes:
       if added:
@@ -98,27 +98,27 @@ proc run*() =
 
   test "nested collection":
     type Unit = object
-      code: ZenValue[string]
+      code: EdValue[string]
 
     var
       count = 0
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(
         id = "ctx2",
         listen_address = "127.0.0.1",
         min_recv_duration = recv_duration,
         blocking_recv = true,
       )
-      ctx3 = ZenContext.init(
+      ctx3 = EdContext.init(
         id = "ctx3", min_recv_duration = recv_duration, blocking_recv = true
       )
-      ctx4 = ZenContext.init(id = "ctx4")
+      ctx4 = EdContext.init(id = "ctx4")
 
     var
-      a = Zen.init(@["a1", "a2"], id = "test2", ctx = ctx1)
-      b = Zen.init(@["b1", "b2"], id = "test2", ctx = ctx2)
-      c = Zen.init(@["c1", "c2"], id = "test2", ctx = ctx3)
-      d = Zen.init(@["d1", "d2"], id = "test2", ctx = ctx4)
+      a = Ed.init(@["a1", "a2"], id = "test2", ctx = ctx1)
+      b = Ed.init(@["b1", "b2"], id = "test2", ctx = ctx2)
+      c = Ed.init(@["c1", "c2"], id = "test2", ctx = ctx3)
+      d = Ed.init(@["d1", "d2"], id = "test2", ctx = ctx4)
 
     d.changes:
       if added:
@@ -151,8 +151,8 @@ proc run*() =
 
   test "Vector3 array network sync":
     var
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(
         id = "ctx2",
         listen_address = "127.0.0.1",
         min_recv_duration = recv_duration,
@@ -161,19 +161,19 @@ proc run*() =
 
     ctx2.subscribe(ctx1)
 
-    # Create Vector3 value and verify it creates ZenValue not ZenSeq
+    # Create Vector3 value and verify it creates EdValue not EdSeq
     var vec = Vector3([1.0, 2.0, 3.0])
-    var v1 = Zen.init(vec, id = "vector", ctx = ctx1)
+    var v1 = Ed.init(vec, id = "vector", ctx = ctx1)
     
     # Verify type - this ensures our fix worked
-    check v1 is ZenValue[Vector3]
+    check v1 is EdValue[Vector3]
     check v1.value == vec
 
     ctx1.tick
     ctx2.tick
 
     # Test that it synced over network
-    var v2 = ZenValue[Vector3](ctx2["vector"])
+    var v2 = EdValue[Vector3](ctx2["vector"])
     check v2.value == vec
 
     # Test mutation sync
@@ -185,5 +185,5 @@ proc run*() =
     ctx2.close
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

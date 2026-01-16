@@ -1,12 +1,12 @@
 import std/[unittest]
 import pkg/[pretty, chronicles]
-import model_citizen
+import ed
 import ./object_tests_types
 
 proc run*() =
   test "generate properties":
-    var boop = Boop().init_zen_fields
-    var bloop = Bloop().init_zen_fields
+    var boop = Boop().init_ed_fields
+    var bloop = Bloop().init_ed_fields
 
     var counter = 0
 
@@ -50,5 +50,5 @@ proc run*() =
     check counter == 6
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

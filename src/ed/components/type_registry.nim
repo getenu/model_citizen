@@ -1,7 +1,7 @@
 import std/[locks, intsets, macros, typetraits, strutils]
 import std/macrocache except value
-import model_citizen/core
-import model_citizen/[types {.all.}, zens/contexts, zens/private]
+import ed/core
+import ed/[types {.all.}, zens/contexts, zens/private]
 import ./private/global_state
 
 template deref*(o: ref): untyped =
@@ -49,7 +49,7 @@ proc register_type(typ: type) =
       var clone = new typ
       clone[] = self[]
       for src, dest in fields(self[], clone[]):
-        when src is Zen:
+        when src is Ed:
           if ?src:
             var field = type(src)()
             field.id = src.id
@@ -58,18 +58,18 @@ proc register_type(typ: type) =
           dest = nil
         elif (src is proc):
           dest = nil
-        elif src.has_custom_pragma(zen_ignore):
+        elif src.has_custom_pragma(ed_ignore):
           dest = dest.type.default
       {.no_side_effect.}:
         result = flatty.to_flatty(clone[])
 
   let parse =
-    func (ctx: ZenContext, clone_from: string): ref RootObj =
+    func (ctx: EdContext, clone_from: string): ref RootObj =
       var self = typ()
       {.no_side_effect.}:
         self[] = from_flatty(clone_from, self[].type, ctx)
       for field in self[].fields:
-        when field is Zen:
+        when field is Ed:
           if ?field and field.id in ctx:
             field = type(field)(ctx[field.id])
       result = self
@@ -79,7 +79,7 @@ proc register_type(typ: type) =
       RegisteredType(stringify: stringify, parse: parse, tid: key)
 
 proc is_zen(node: NimNode): bool =
-  if node.kind == nnk_sym and node.str_val == "ZenBase":
+  if node.kind == nnk_sym and node.str_val == "EdBase":
     return true
 
   let info = node.get_type_impl
@@ -98,14 +98,14 @@ proc get_value_type(self: NimNode): NimNode =
   if self.kind == nnk_sym:
     let def = self.get_impl
     if def.len >= 3 and def[2].kind == nnk_bracket_expr:
-      if def[2][0].kind == nnk_sym and def[2][0].str_val == "ZenValue":
+      if def[2][0].kind == nnk_sym and def[2][0].str_val == "EdValue":
         return def[2][1]
   elif self.kind == nnk_bracket_expr:
-    if self[0].str_val.starts_with("Zen"):
+    if self[0].str_val.starts_with("Ed"):
       return self[1]
 
   error "get_value_type doesn't know how to handle type:\n\n" & self.tree_repr &
-    "\n\nThis is probably a model_citizen bug.", self
+    "\n\nThis is probably a ed bug.", self
 
 macro build_accessors(T: type, public: bool): untyped =
   result = new_stmt_list()
@@ -180,20 +180,20 @@ macro build_accessors(T: type, public: bool): untyped =
         new_empty_node()
 
 template build_accessors*(
-    _: type Zen, T: type[ref object], public: bool = true
+    _: type Ed, T: type[ref object], public: bool = true
 ): untyped =
   build_accessors(T, public)
 
-macro register*(_: type Zen, typ: type, public = true): untyped =
+macro register*(_: type Ed, typ: type, public = true): untyped =
   result = new_stmt_list()
   result.add quote do:
     register_type(`typ`)
-    Zen.build_accessors(`typ`, `public`)
+    Ed.build_accessors(`typ`, `public`)
 
 proc ref_id*[T: ref RootObj](value: T): string {.inline.} =
   $value.type_id & ":" & $value.id
 
-proc ref_count*[O](self: ZenContext, changes: seq[Change[O]], zen_id: string) =
+proc ref_count*[O](self: EdContext, changes: seq[Change[O]], ed_id: string) =
   privileged
   log_defaults
 
@@ -205,15 +205,15 @@ proc ref_count*[O](self: ZenContext, changes: seq[Change[O]], zen_id: string) =
       if id notin self.ref_pool:
         debug "saving ref", id
         self.ref_pool[id] = CountedRef()
-      self.ref_pool[id].references.incl(zen_id)
+      self.ref_pool[id].references.incl(ed_id)
       self.ref_pool[id].obj = change.item
     if REMOVED in change.changes:
       assert id in self.ref_pool
-      self.ref_pool[id].references.excl(zen_id)
+      self.ref_pool[id].references.excl(ed_id)
       if self.ref_pool[id].references.card == 0:
         self.freeable_refs[id] = get_mono_time() + init_duration(seconds = 10)
 
-proc find_ref*[T](self: ZenContext, value: var T): bool =
+proc find_ref*[T](self: EdContext, value: var T): bool =
   privileged
 
   if ?value:
@@ -222,11 +222,11 @@ proc find_ref*[T](self: ZenContext, value: var T): bool =
       value = T(self.ref_pool[id].obj)
       result = true
 
-when defined(dump_zen_objects):
+when defined(dump_ed_objects):
   import std/[os, algorithm]
 
 proc can_free*(
-    self: ZenContext, value: ref RootObj, id: string
+    self: EdContext, value: ref RootObj, id: string
 ): tuple[freeable: bool, references: seq[string], missing: bool] =
   privileged
 
@@ -238,7 +238,7 @@ proc can_free*(
     else:
       result.missing = true
 
-proc free_impl(self: ZenContext, value: ref RootObj, id: string) =
+proc free_impl(self: EdContext, value: ref RootObj, id: string) =
   privileged
 
   debug "freeing ref", id
@@ -261,10 +261,10 @@ proc free_impl(self: ZenContext, value: ref RootObj, id: string) =
   self.ref_pool.del(id)
   self.freeable_refs.del(id)
 
-proc free*[T: ref RootObj](self: ZenContext, value: T) =
+proc free*[T: ref RootObj](self: EdContext, value: T) =
   self.free_impl(value, value.ref_id)
 
-proc queue_free*[T: ref RootObj](self: ZenContext, value: T) =
+proc queue_free*[T: ref RootObj](self: EdContext, value: T) =
   let id = value.ref_id
   let query = self.can_free(value, id)
   if query.freeable:
@@ -274,10 +274,10 @@ proc queue_free*[T: ref RootObj](self: ZenContext, value: T) =
   elif not query.missing:
     self.free_queue.add(id)
 
-proc free_refs*(self: ZenContext) =
+proc free_refs*(self: EdContext) =
   privileged
 
-  when defined(dump_zen_objects):
+  when defined(dump_ed_objects):
     let now = get_mono_time()
     if now > self.dump_at:
       self.pack_objects
@@ -311,4 +311,4 @@ when is_main_module:
     id*: string
     name*: string
 
-  Zen.register(Unit)
+  Ed.register(Unit)

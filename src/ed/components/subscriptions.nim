@@ -8,14 +8,14 @@ import pkg/threading/channels {.all.}
 import pkg/[flatty, supersnappy]
 
 import
-  model_citizen/[core, types {.all.}],
-  model_citizen/zens/[contexts, private, initializers {.all.}]
+  ed/[core, types {.all.}],
+  ed/zens/[contexts, private, initializers {.all.}]
 
-import model_citizen/components/[private/global_state]
+import ed/components/[private/global_state]
 
 import ./type_registry
 
-var flatty_ctx {.threadvar.}: ZenContext
+var flatty_ctx {.threadvar.}: EdContext
 
 type FlatRef = tuple[tid: int, ref_id: string, item: string]
 
@@ -68,7 +68,7 @@ proc `$`*(self: Subscription): string =
   \"{self.kind} subscription for {self.ctx_id}"
 
 proc tick*(
-  self: ZenContext,
+  self: EdContext,
   messages = int.high,
   max_duration = self.max_recv_duration,
   min_duration = self.min_recv_duration,
@@ -77,7 +77,7 @@ proc tick*(
 ) {.gcsafe.}
 
 proc to_flatty*[T: ref RootObj](s: var string, x: T) =
-  when x is ref ZenBase:
+  when x is ref EdBase:
     s.to_flatty not ?x
     if ?x:
       s.to_flatty ZenFlattyInfo((x.id, x.type.tid))
@@ -102,7 +102,7 @@ proc to_flatty*[T: ref RootObj](s: var string, x: T) =
 proc from_flatty*[T: ref RootObj](s: string, i: var int, value: var T) =
   privileged
 
-  when value is ref ZenBase:
+  when value is ref EdBase:
     var is_nil: bool
     s.from_flatty(i, is_nil)
     if not is_nil:
@@ -151,7 +151,7 @@ proc from_flatty*(s: string, i: var int, p: var ptr) =
   s.from_flatty(i, val)
   p = cast[p.type](val)
 
-proc from_flatty*(bin: string, T: type, ctx: ZenContext): T =
+proc from_flatty*(bin: string, T: type, ctx: EdContext): T =
   flatty_ctx = ctx
   result = flatty.from_flatty(bin, T)
 
@@ -161,7 +161,7 @@ proc send_or_buffer(sub: Subscription, msg: sink Message, buffer: bool) =
   else:
     sub.chan.send(msg)
 
-proc flush_buffers*(self: ZenContext) =
+proc flush_buffers*(self: EdContext) =
   for sub in self.subscribers:
     if sub.kind == LOCAL and sub.chan_buffer.len > 0 and not sub.chan.full:
       let buffer = sub.chan_buffer
@@ -170,22 +170,22 @@ proc flush_buffers*(self: ZenContext) =
         sub.send_or_buffer(msg, true)
 
 proc send*(
-    self: ZenContext,
+    self: EdContext,
     sub: Subscription,
     msg: sink Message,
     op_ctx = OperationContext(),
     flags = DEFAULT_FLAGS,
 ) =
-  log_defaults("model_citizen networking")
+  log_defaults("ed networking")
   sent_message_counter.inc(label_values = [self.metrics_label])
-  when defined(zen_trace):
+  when defined(ed_trace):
     if sub.ctx_id notin self.last_msg_id:
       self.last_msg_id[sub.ctx_id] = 1
     else:
       self.last_msg_id[sub.ctx_id] += 1
     msg.id = self.last_msg_id[sub.ctx_id]
 
-  when defined(dump_zen_objects):
+  when defined(dump_ed_objects):
     self.counts[msg.kind] += 1
 
   # Build source set
@@ -249,14 +249,14 @@ proc send*(
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
 
-proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
+proc publish_destroy*[T, O](self: Ed[T, O], op_ctx: OperationContext) =
   privileged
-  log_defaults("model_citizen publishing")
+  log_defaults("ed publishing")
 
-  debug "publishing destroy", zen_id = self.id
+  debug "publishing destroy", ed_id = self.id
   for sub in self.ctx.subscribers:
     if sub.ctx_id notin op_ctx.source:
-      when defined(zen_trace):
+      when defined(ed_trace):
         self.ctx.send(
           sub,
           Message(
@@ -298,10 +298,10 @@ proc pack_messages(msgs: seq[Message]): seq[Message] =
     result = msgs
 
 proc publish_changes*[T, O](
-    self: Zen[T, O], changes: seq[Change[O]], op_ctx: OperationContext
+    self: Ed[T, O], changes: seq[Change[O]], op_ctx: OperationContext
 ) =
   privileged
-  log_defaults("model_citizen publishing")
+  log_defaults("ed publishing")
   debug "publish_changes", op_ctx
   if self.ctx.subscribers.len > 0:
     var msgs: seq[Message]
@@ -318,7 +318,7 @@ proc publish_changes*[T, O](
           debug "skipping changes"
           continue
         let trace =
-          when defined(zen_trace):
+          when defined(ed_trace):
             \"{get_stack_trace()}\n\nop:\n{op_ctx.trace}"
           else:
             ""
@@ -334,7 +334,7 @@ proc publish_changes*[T, O](
     self.ctx.tick_reactor
 
 proc add_subscriber*(
-    self: ZenContext,
+    self: EdContext,
     sub: Subscription,
     push_all: bool,
     remote_objects: HashSet[string],
@@ -345,15 +345,15 @@ proc add_subscriber*(
   for id in self.objects.keys.to_seq.reversed:
     if id notin remote_objects or push_all:
       debug "sending object on subscribe",
-        from_ctx = self.id, to_ctx = sub.ctx_id, zen_id = id
+        from_ctx = self.id, to_ctx = sub.ctx_id, ed_id = id
 
       let zen = self.objects[id]
       zen.publish_create sub
     else:
       debug "not sending object because remote ctx already has it",
-        from_ctx = self.id, to_ctx = sub.ctx_id, zen_id = id
+        from_ctx = self.id, to_ctx = sub.ctx_id, ed_id = id
 
-proc unsubscribe*(self: ZenContext, sub: Subscription) =
+proc unsubscribe*(self: EdContext, sub: Subscription) =
   if sub.kind == REMOTE:
     self.reactor.disconnect(sub.connection)
   else:
@@ -362,13 +362,13 @@ proc unsubscribe*(self: ZenContext, sub: Subscription) =
   self.subscribers.delete self.subscribers.find(sub)
   self.unsubscribed.add sub.ctx_id
 
-proc process_value_initializers(self: ZenContext) =
+proc process_value_initializers(self: EdContext) =
   debug "running deferred initializers", ctx = self.id
   for initializer in self.value_initializers:
     initializer()
   self.value_initializers = @[]
 
-proc subscribe*(self: ZenContext, ctx: ZenContext, bidirectional = true) =
+proc subscribe*(self: EdContext, ctx: EdContext, bidirectional = true) =
   privileged
   debug "local subscribe", ctx = self.id
   self.pack_objects
@@ -390,7 +390,7 @@ proc subscribe*(self: ZenContext, ctx: ZenContext, bidirectional = true) =
     ctx.subscribe(self, bidirectional = false)
 
 proc subscribe*(
-    self: ZenContext,
+    self: EdContext,
     address: string,
     bidirectional = true,
     callback: proc() {.gcsafe.} = nil,
@@ -467,9 +467,9 @@ proc subscribe*(
 
   self.tick(blocking = false)
 
-proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
+proc process_message(self: EdContext, msg: Message, sub: Subscription = nil) =
   privileged
-  log_defaults("model_citizen publishing")
+  log_defaults("ed publishing")
 
   # Get source: either from source_set (Local) or decode from source (Remote)
   let source =
@@ -489,7 +489,7 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
   assert self.id notin source
 
   received_message_counter.inc(label_values = [self.metrics_label])
-  # when defined(zen_trace):
+  # when defined(ed_trace):
   #   let src = self.name & "-" & source_str
   #   if src in self.last_received_id:
   #     if msg.id != self.last_received_id[src] + 1:
@@ -543,7 +543,7 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
   else:
     fail "Can't recv a blank message"
 
-proc untrack*[T, O](self: Zen[T, O], zid: ZID) =
+proc untrack*[T, O](self: Ed[T, O], zid: EID) =
   privileged
   log_defaults
   assert self.valid
@@ -551,7 +551,7 @@ proc untrack*[T, O](self: Zen[T, O], zid: ZID) =
   # :(
   if zid in self.changed_callbacks:
     let callback = self.changed_callbacks[zid]
-    if zid notin self.paused_zids:
+    if zid notin self.paused_eids:
       callback(@[Change.init(O, {CLOSED})])
     self.ctx.close_procs.del(zid)
     debug "removing close proc", zid
@@ -560,14 +560,14 @@ proc untrack*[T, O](self: Zen[T, O], zid: ZID) =
     error "no change callback for zid", zid = zid
 
 proc track*[T, O](
-    self: Zen[T, O], callback: proc(changes: seq[Change[O]]) {.gcsafe.}
-): ZID {.discardable.} =
+    self: Ed[T, O], callback: proc(changes: seq[Change[O]]) {.gcsafe.}
+): EID {.discardable.} =
   privileged
   log_defaults
 
   assert self.valid
-  inc self.ctx.changed_callback_zid
-  let zid = self.ctx.changed_callback_zid
+  inc self.ctx.changed_callback_eid
+  let zid = self.ctx.changed_callback_eid
   self.changed_callbacks[zid] = callback
   debug "adding close proc", zid
   self.ctx.close_procs[zid] = proc() =
@@ -575,21 +575,21 @@ proc track*[T, O](
   result = zid
 
 proc track*[T, O](
-    self: Zen[T, O],
-    callback: proc(changes: seq[Change[O]], zid: ZID) {.gcsafe.},
-): ZID {.discardable.} =
+    self: Ed[T, O],
+    callback: proc(changes: seq[Change[O]], zid: EID) {.gcsafe.},
+): EID {.discardable.} =
   assert self.valid
-  var zid: ZID
+  var zid: EID
   zid = self.track proc(changes: seq[Change[O]]) {.gcsafe.} =
     callback(changes, zid)
 
   result = zid
 
-proc untrack_on_destroy*(self: ref ZenBase, zid: ZID) =
-  self.bound_zids.add(zid)
+proc untrack_on_destroy*(self: ref EdBase, zid: EID) =
+  self.bound_eids.add(zid)
 
 proc tick*(
-    self: ZenContext,
+    self: EdContext,
     messages = int.high,
     max_duration = self.max_recv_duration,
     min_duration = self.min_recv_duration,
@@ -723,11 +723,11 @@ proc tick*(
         ((count > 0 or not blocking) and get_mono_time() > recv_until):
       break
 
-template changes*[T, O](self: Zen[T, O], pause_me, body) =
+template changes*[T, O](self: Ed[T, O], pause_me, body) =
   let zen = self
   make_discardable block:
     {.line.}:
-      zen.track proc(changes: seq[Change[O]], zid {.inject.}: ZID) {.gcsafe.} =
+      zen.track proc(changes: seq[Change[O]], zid {.inject.}: EID) {.gcsafe.} =
         let pause_zid = if pause_me: zid else: 0
         zen.pause(pause_zid):
           for change {.inject.} in changes:
@@ -761,7 +761,7 @@ template changes*[T, O](self: Zen[T, O], pause_me, body) =
             {.line.}:
               body
 
-template changes*[T, O](self: Zen[T, O], body) =
+template changes*[T, O](self: Ed[T, O], body) =
   changes(self, true, body)
 
 when defined(zen_debug_messages):

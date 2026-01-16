@@ -1,23 +1,23 @@
 import std/[typetraits, macros, macrocache, tables]
-import model_citizen/[core, components/private/tracking, types {.all.}]
+import ed/[core, components/private/tracking, types {.all.}]
 import ./[contexts, validations, private]
 
-proc untrack_all*[T, O](self: Zen[T, O]) =
-  private_access ZenObject[T, O]
-  private_access ZenBase
-  private_access ZenContext
+proc untrack_all*[T, O](self: Ed[T, O]) =
+  private_access EdObject[T, O]
+  private_access EdBase
+  private_access EdContext
   assert self.valid
   self.trigger_callbacks(@[Change.init(O, {CLOSED})])
   for zid, _ in self.changed_callbacks.pairs:
     self.ctx.close_procs.del(zid)
 
-  for zid in self.bound_zids:
+  for zid in self.bound_eids:
     self.ctx.untrack(zid)
 
   self.changed_callbacks.clear
 
-proc untrack*(ctx: ZenContext, zid: ZID) =
-  private_access ZenContext
+proc untrack*(ctx: EdContext, zid: EID) =
+  private_access EdContext
 
   # :(
   if zid in ctx.close_procs:
@@ -27,29 +27,29 @@ proc untrack*(ctx: ZenContext, zid: ZID) =
   else:
     debug "No close proc for zid", zid = zid
 
-proc contains*[T, O](self: Zen[T, O], child: O): bool =
+proc contains*[T, O](self: Ed[T, O], child: O): bool =
   privileged
   assert self.valid
   child in self.tracked
 
-proc contains*[K, V](self: ZenTable[K, V], key: K): bool =
+proc contains*[K, V](self: EdTable[K, V], key: K): bool =
   privileged
   assert self.valid
   key in self.tracked
 
-proc contains*[T, O](self: Zen[T, O], children: set[O] | seq[O]): bool =
+proc contains*[T, O](self: Ed[T, O], children: set[O] | seq[O]): bool =
   assert self.valid
   result = true
   for child in children:
     if child notin self:
       return false
 
-proc clear*[T, O](self: Zen[T, O]) =
+proc clear*[T, O](self: Ed[T, O]) =
   assert self.valid
   mutate(OperationContext(source: [self.ctx.id].toHashSet)):
     self.tracked = T.default
 
-proc `value=`*[T, O](self: Zen[T, O], value: T, op_ctx = OperationContext()) =
+proc `value=`*[T, O](self: Ed[T, O], value: T, op_ctx = OperationContext()) =
   privileged
   assert self.valid
   self.ctx.setup_op_ctx
@@ -57,59 +57,59 @@ proc `value=`*[T, O](self: Zen[T, O], value: T, op_ctx = OperationContext()) =
     mutate(op_ctx):
       self.tracked = value
 
-proc value*[T, O](self: Zen[T, O]): T =
+proc value*[T, O](self: Ed[T, O]): T =
   privileged
   assert self.valid
   self.tracked
 
-proc `[]`*[K, V](self: Zen[Table[K, V], Pair[K, V]], index: K): V =
+proc `[]`*[K, V](self: Ed[Table[K, V], Pair[K, V]], index: K): V =
   privileged
   assert self.valid
   self.tracked[index]
 
-proc `[]`*[T](self: ZenSeq[T], index: SomeOrdinal | BackwardsIndex): T =
+proc `[]`*[T](self: EdSeq[T], index: SomeOrdinal | BackwardsIndex): T =
   privileged
   assert self.valid
   self.tracked[index]
 
 proc `[]=`*[K, V](
-    self: ZenTable[K, V], key: K, value: V, op_ctx = OperationContext()
+    self: EdTable[K, V], key: K, value: V, op_ctx = OperationContext()
 ) =
   self.ctx.setup_op_ctx
   self.put(key, value, touch = false, op_ctx)
 
 proc `[]=`*[T](
-    self: ZenSeq[T], index: SomeOrdinal, value: T, op_ctx = OperationContext()
+    self: EdSeq[T], index: SomeOrdinal, value: T, op_ctx = OperationContext()
 ) =
   self.ctx.setup_op_ctx
   assert self.valid
   mutate(op_ctx):
     self.tracked[index] = value
 
-proc add*[T, O](self: Zen[T, O], value: O, op_ctx = OperationContext()) =
+proc add*[T, O](self: Ed[T, O], value: O, op_ctx = OperationContext()) =
   privileged
   self.ctx.setup_op_ctx
-  when O is Zen:
+  when O is Ed:
     assert self.valid(value)
   else:
     assert self.valid
   self.tracked.add value
   let added = @[Change.init(value, {ADDED})]
   self.link_or_unlink(added, true)
-  when O isnot Zen and O is ref:
+  when O isnot Ed and O is ref:
     self.ctx.ref_count(added, self.id)
 
   self.publish_changes(added, op_ctx)
   self.trigger_callbacks(added)
 
-proc del*[T, O](self: Zen[T, O], value: O, op_ctx = OperationContext()) =
+proc del*[T, O](self: Ed[T, O], value: O, op_ctx = OperationContext()) =
   privileged
   self.ctx.setup_op_ctx
   assert self.valid
   if value in self.tracked:
     remove(self, value, value, del, op_ctx)
 
-proc del*[K, V](self: ZenTable[K, V], key: K, op_ctx = OperationContext()) =
+proc del*[K, V](self: EdTable[K, V], key: K, op_ctx = OperationContext()) =
   privileged
   self.ctx.setup_op_ctx
   assert self.valid
@@ -119,7 +119,7 @@ proc del*[K, V](self: ZenTable[K, V], key: K, op_ctx = OperationContext()) =
     )
 
 proc del*[T: seq, O](
-    self: Zen[T, O], index: SomeOrdinal, op_ctx = OperationContext()
+    self: Ed[T, O], index: SomeOrdinal, op_ctx = OperationContext()
 ) =
   privileged
 
@@ -128,7 +128,7 @@ proc del*[T: seq, O](
   if index < self.tracked.len:
     remove(self, index, self.tracked[index], del, op_ctx)
 
-proc delete*[T, O](self: Zen[T, O], value: O) =
+proc delete*[T, O](self: Ed[T, O], value: O) =
   assert self.valid
   if value in self.tracked:
     remove(
@@ -139,7 +139,7 @@ proc delete*[T, O](self: Zen[T, O], value: O) =
       op_ctx = OperationContext(source: [self.ctx.id].toHashSet),
     )
 
-proc delete*[K, V](self: ZenTable[K, V], key: K) =
+proc delete*[K, V](self: EdTable[K, V], key: K) =
   assert self.valid
   if key in self.tracked:
     remove(
@@ -150,7 +150,7 @@ proc delete*[K, V](self: ZenTable[K, V], key: K) =
       op_ctx = OperationContext(),
     )
 
-proc delete*[T: seq, O](self: Zen[T, O], index: SomeOrdinal) =
+proc delete*[T: seq, O](self: Ed[T, O], index: SomeOrdinal) =
   assert self.valid
   if index < self.tracked.len:
     remove(
@@ -158,120 +158,120 @@ proc delete*[T: seq, O](self: Zen[T, O], index: SomeOrdinal) =
     )
 
 proc touch*[K, V](
-    self: ZenTable[K, V], pair: Pair[K, V], op_ctx: OperationContext
+    self: EdTable[K, V], pair: Pair[K, V], op_ctx: OperationContext
 ) =
   assert self.valid
   self.put(pair.key, pair.value, touch = true, op_ctx = op_ctx)
 
 proc touch*[T, O](
-    self: ZenTable[T, O], key: T, value: O, op_ctx = OperationContext()
+    self: EdTable[T, O], key: T, value: O, op_ctx = OperationContext()
 ) =
   assert self.valid
   self.put(key, value, touch = true, op_ctx = op_ctx)
 
-proc touch*[T: set, O](self: Zen[T, O], value: O, op_ctx = OperationContext()) =
+proc touch*[T: set, O](self: Ed[T, O], value: O, op_ctx = OperationContext()) =
   assert self.valid
   self.change_and_touch({value}, true, op_ctx = op_ctx)
 
-proc touch*[T: seq, O](self: Zen[T, O], value: O, op_ctx = OperationContext()) =
+proc touch*[T: seq, O](self: Ed[T, O], value: O, op_ctx = OperationContext()) =
   assert self.valid
   self.change_and_touch(@[value], true, op_ctx = op_ctx)
 
-proc touch*[T, O](self: Zen[T, O], value: T, op_ctx = OperationContext()) =
+proc touch*[T, O](self: Ed[T, O], value: T, op_ctx = OperationContext()) =
   assert self.valid
   self.change_and_touch(value, true, op_ctx = op_ctx)
 
-proc touch*[T](self: ZenValue[T], value: T, op_ctx = OperationContext()) =
+proc touch*[T](self: EdValue[T], value: T, op_ctx = OperationContext()) =
   assert self.valid
   mutate_and_touch(touch = true, op_ctx):
     self.tracked = value
 
-proc len*(self: Zen): int =
+proc len*(self: Ed): int =
   privileged
   assert self.valid
   self.tracked.len
 
-proc `+`*[O](self, other: ZenSet[O]): set[O] =
+proc `+`*[O](self, other: EdSet[O]): set[O] =
   privileged
   self.tracked + other.tracked
 
-proc `+=`*[T, O](self: Zen[T, O], value: T) =
+proc `+=`*[T, O](self: Ed[T, O], value: T) =
   assert self.valid
   self.change(value, true, op_ctx = OperationContext())
 
-proc `+=`*[O](self: ZenSet[O], value: O) =
+proc `+=`*[O](self: EdSet[O], value: O) =
   assert self.valid
   self.change({value}, true, op_ctx = OperationContext())
 
-proc `+=`*[T: seq, O](self: Zen[T, O], value: O) =
+proc `+=`*[T: seq, O](self: Ed[T, O], value: O) =
   assert self.valid
   self.add(value)
 
-proc `+=`*[T, O](self: ZenTable[T, O], other: Table[T, O]) =
+proc `+=`*[T, O](self: EdTable[T, O], other: Table[T, O]) =
   assert self.valid
   self.put_all(other, touch = false, op_ctx = OperationContext())
 
-proc `-=`*[T, O](self: Zen[T, O], value: T) =
+proc `-=`*[T, O](self: Ed[T, O], value: T) =
   assert self.valid
   self.change(value, false, op_ctx = OperationContext())
 
-proc `-=`*[T: set, O](self: Zen[T, O], value: O) =
+proc `-=`*[T: set, O](self: Ed[T, O], value: O) =
   assert self.valid
   self.change({value}, false, op_ctx = OperationContext())
 
-proc `-=`*[T: seq, O](self: Zen[T, O], value: O) =
+proc `-=`*[T: seq, O](self: Ed[T, O], value: O) =
   assert self.valid
   self.change(@[value], false, op_ctx = OperationContext())
 
-proc `&=`*[T, O](self: Zen[T, O], value: O) =
+proc `&=`*[T, O](self: Ed[T, O], value: O) =
   assert self.valid
   self.value = self.value & value
 
-proc `==`*(a, b: Zen): bool =
+proc `==`*(a, b: Ed): bool =
   privileged
   a.is_nil == b.is_nil and a.destroyed == b.destroyed and a.tracked == b.tracked and
     a.id == b.id
 
-proc pause_changes*(self: Zen, zids: varargs[ZID]) =
+proc pause_changes*(self: Ed, eids: varargs[EID]) =
   assert self.valid
-  if zids.len == 0:
-    for zid in self.changed_callbacks.keys:
-      self.paused_zids.incl(zid)
+  if eids.len == 0:
+    for eid in self.changed_callbacks.keys:
+      self.paused_eids.incl(eid)
   else:
-    for zid in zids:
-      self.paused_zids.incl(zid)
+    for eid in eids:
+      self.paused_eids.incl(eid)
 
-proc resume_changes*(self: Zen, zids: varargs[ZID]) =
+proc resume_changes*(self: Ed, eids: varargs[EID]) =
   assert self.valid
-  if zids.len == 0:
-    self.paused_zids = {}
+  if eids.len == 0:
+    self.paused_eids = {}
   else:
-    for zid in zids:
-      self.paused_zids.excl(zid)
+    for eid in eids:
+      self.paused_eids.excl(eid)
 
-template pause_impl(self: Zen, zids: untyped, body: untyped) =
-  private_access ZenBase
+template pause_impl(self: Ed, eids: untyped, body: untyped) =
+  private_access EdBase
 
-  let previous = self.paused_zids
-  for zid in zids:
-    self.paused_zids.incl(zid)
+  let previous = self.paused_eids
+  for eid in eids:
+    self.paused_eids.incl(eid)
   try:
     body
   finally:
-    self.paused_zids = previous
+    self.paused_eids = previous
 
-template pause*(self: Zen, zids: varargs[ZID], body: untyped) =
+template pause*(self: Ed, eids: varargs[EID], body: untyped) =
   mixin valid
   assert self.valid
-  pause_impl(self, zids, body)
+  pause_impl(self, eids, body)
 
-template pause*(self: Zen, body: untyped) =
-  private_access ZenObject
+template pause*(self: Ed, body: untyped) =
+  private_access EdObject
   mixin valid
   assert self.valid
   pause_impl(self, self.changed_callbacks.keys, body)
 
-proc destroy*[T, O](self: Zen[T, O], publish = true) =
+proc destroy*[T, O](self: Ed[T, O], publish = true) =
   log_defaults
   debug "destroying", unit = self.id, stack = get_stack_trace()
   assert self.valid
@@ -283,31 +283,31 @@ proc destroy*[T, O](self: Zen[T, O], publish = true) =
   if publish:
     self.publish_destroy OperationContext(source: [self.ctx.id].toHashSet)
 
-proc `~=`*[T, O](a: Zen[T, O], b: T) =
+proc `~=`*[T, O](a: Ed[T, O], b: T) =
   `value=`(a, b)
 
-proc `~==`*[T, O](a: Zen[T, O], b: T): bool =
+proc `~==`*[T, O](a: Ed[T, O], b: T): bool =
   value(a) == b
 
-proc `~==~`*[T, O](a: Zen[T, O], b: Zen[T, O]): bool =
+proc `~==~`*[T, O](a: Ed[T, O], b: Ed[T, O]): bool =
   value(a) == value(b)
 
-proc `?~`*[T](self: ZenValue[T]): bool =
+proc `?~`*[T](self: EdValue[T]): bool =
   ? ~self
 
-iterator items*[T](self: ZenSet[T] | ZenSeq[T]): T =
+iterator items*[T](self: EdSet[T] | EdSeq[T]): T =
   privileged
   assert self.valid
   for item in self.tracked.items:
     yield item
 
-iterator items*[K, V](self: ZenTable[K, V]): Pair[K, V] =
+iterator items*[K, V](self: EdTable[K, V]): Pair[K, V] =
   privileged
   assert self.valid
   for key, value in self.tracked.pairs:
     yield Pair[K, V](key: key, value: value)
 
-iterator pairs*[K, V](self: ZenTable[K, V]): (K, V) =
+iterator pairs*[K, V](self: EdTable[K, V]): (K, V) =
   privileged
   assert self.valid
   for pair in self.tracked.pairs:

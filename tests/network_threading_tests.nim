@@ -1,12 +1,12 @@
 import std/[locks, os, unittest, tables]
 import pkg/[pretty, chronicles]
-import model_citizen
+import ed
 
 var global_lock: Lock
 global_lock.init_lock
 var global_cond: Cond
 global_cond.init_cond
-var worker_thread: Thread[ZenContext]
+var worker_thread: Thread[EdContext]
 
 type
   UnitFlags = enum
@@ -14,13 +14,13 @@ type
     End
 
   Unit = ref object of RootObj
-    flags: ZenSet[UnitFlags]
-    units: ZenSeq[Unit]
+    flags: EdSet[UnitFlags]
+    units: EdSeq[Unit]
 
-proc start_worker(ctx: ZenContext) {.thread.} =
-  Zen.thread_ctx = ctx
+proc start_worker(ctx: EdContext) {.thread.} =
+  Ed.thread_ctx = ctx
 
-  var b = ZenValue[string](ctx["t1"])
+  var b = EdValue[string](ctx["t1"])
   var working = true
   b.changes:
     if "scott".added:
@@ -40,14 +40,14 @@ proc start_worker(ctx: ZenContext) {.thread.} =
 
 proc run*() =
   test "reload":
-    Zen.thread_ctx.clear
-    Zen.thread_ctx = ZenContext.init(id = "main")
-    var ctx = ZenContext.init(id = "worker", listen_address = "127.0.0.1")
-    Zen.thread_ctx.subscribe "127.0.0.1",
+    Ed.thread_ctx.clear
+    Ed.thread_ctx = EdContext.init(id = "main")
+    var ctx = EdContext.init(id = "worker", listen_address = "127.0.0.1")
+    Ed.thread_ctx.subscribe "127.0.0.1",
       callback = proc() =
         ctx.tick
 
-    var a = Zen.init("", id = "t1")
+    var a = Ed.init("", id = "t1")
     ctx.tick(blocking = true)
     global_lock.acquire()
     worker_thread.create_thread(start_worker, ctx)
@@ -72,10 +72,10 @@ proc run*() =
           a.value = "scott"
 
     while working:
-      Zen.thread_ctx.tick
+      Ed.thread_ctx.tick
     worker_thread.join_thread
     ctx.close
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

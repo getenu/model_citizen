@@ -1,18 +1,18 @@
-import model_citizen
+import ed
 
 type
-  ZenString* = ZenValue[string]
+  ZenString* = EdValue[string]
 
   Beep* = ref object of RootObj
     id*: string
-    name_value*: ZenValue[string]
+    name_value*: EdValue[string]
 
   Boop* = ref object of Beep
     state_value*: ZenString
-    messages*: ZenSeq[string]
+    messages*: EdSeq[string]
 
   Bloop* = ref object of Beep
-    ageValue*: ZenValue[int]
+    ageValue*: EdValue[int]
 
-Zen.register(Boop)
-Zen.register(Bloop)
+Ed.register(Boop)
+Ed.register(Bloop)

@@ -1,7 +1,7 @@
 import std/[tables, sugar, unittest]
 import pkg/[flatty, chronicles, pretty]
-import model_citizen
-import model_citizen/[types, components/type_registry]
+import ed
+import ed/[types, components/type_registry]
 from std/times import init_duration
 
 proc run*() =
@@ -15,17 +15,17 @@ proc run*() =
     Bot = ref object of Unit
       bot_stuff: string
 
-  Zen.register(Build, false)
-  Zen.register(Bot, false)
+  Ed.register(Build, false)
+  Ed.register(Bot, false)
 
   test "object publish inheritance":
     var
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(id = "ctx2")
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(id = "ctx2")
       build = Build(id: "some_build", build_stuff: "asdf")
       bot = Bot(id: "some_bot", bot_stuff: "wasd")
-      units1 = ZenSeq[Unit].init(id = "units", ctx = ctx1)
-      units2 = ZenSeq[Unit].init(id = "units", ctx = ctx2)
+      units1 = EdSeq[Unit].init(id = "units", ctx = ctx1)
+      units2 = EdSeq[Unit].init(id = "units", ctx = ctx2)
 
     ctx2.subscribe(ctx1)
 
@@ -44,12 +44,12 @@ proc run*() =
 
   test "object mass assign inheritance":
     var
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(id = "ctx2")
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(id = "ctx2")
       build = Build(id: "some_build", build_stuff: "asdf")
       bot = Bot(id: "some_bot", bot_stuff: "wasd")
-      units1 = ZenSeq[Unit].init(id = "units", ctx = ctx1)
-      units2 = ZenSeq[Unit].init(id = "units", ctx = ctx2)
+      units1 = EdSeq[Unit].init(id = "units", ctx = ctx1)
+      units2 = EdSeq[Unit].init(id = "units", ctx = ctx2)
 
     ctx2.subscribe(ctx1)
 
@@ -71,12 +71,12 @@ proc run*() =
 
   test "object publish on subscribe inheritance":
     var
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(id = "ctx2")
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(id = "ctx2")
       build = Build(id: "some_build", build_stuff: "asdf")
       bot = Bot(id: "some_bot", bot_stuff: "wasd")
-      units1 = ZenSeq[Unit].init(id = "units", ctx = ctx1)
-      units2 = ZenSeq[Unit].init(id = "units", ctx = ctx2)
+      units1 = EdSeq[Unit].init(id = "units", ctx = ctx1)
+      units2 = EdSeq[Unit].init(id = "units", ctx = ctx2)
 
     units1 += build
     units1 += bot
@@ -94,12 +94,12 @@ proc run*() =
   test "no sync objects are created remotely, but their value doesn't sync":
     var
       flags = {TRACK_CHILDREN}
-      ctx1 = ZenContext.init(id = "ctx1")
-      ctx2 = ZenContext.init(id = "ctx2")
-      a = ZenValue[string].init(id = "test1", ctx = ctx1, flags = flags)
-      b = ZenValue[string].init(id = "test1", ctx = ctx2, flags = flags)
-      c = ZenValue[string].init(id = "test2", ctx = ctx1, flags = flags)
-      d: ZenValue[string]
+      ctx1 = EdContext.init(id = "ctx1")
+      ctx2 = EdContext.init(id = "ctx2")
+      a = EdValue[string].init(id = "test1", ctx = ctx1, flags = flags)
+      b = EdValue[string].init(id = "test1", ctx = ctx2, flags = flags)
+      c = EdValue[string].init(id = "test2", ctx = ctx1, flags = flags)
+      d: EdValue[string]
 
     check "test1" in ctx2
     check "test2" notin ctx2
@@ -127,5 +127,5 @@ proc run*() =
     check d.value == "world"
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

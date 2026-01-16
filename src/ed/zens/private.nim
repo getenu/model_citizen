@@ -1,4 +1,4 @@
-import model_citizen/[core, types {.all.}]
+import ed/[core, types {.all.}]
 
 proc init*(
     _: type Change, T: type, changes: set[ChangeKind], field_name = ""
@@ -15,16 +15,16 @@ proc init*[T](
 proc init*(
     _: type OperationContext,
     source: HashSet[string] = initHashSet[string](),
-    ctx: ZenContext = nil,
+    ctx: EdContext = nil,
 ): OperationContext =
   result = OperationContext()
   result.source = source
   if ?ctx:
     result.source.incl ctx.id
-  when defined(zen_trace):
+  when defined(ed_trace):
     result.trace = get_stack_trace()
 
-template setup_op_ctx*(self: ZenContext) =
+template setup_op_ctx*(self: EdContext) =
   let op_ctx =
     if ?op_ctx:
       op_ctx
@@ -32,6 +32,6 @@ template setup_op_ctx*(self: ZenContext) =
       OperationContext.init(source = [self.id].toHashSet)
 
 template privileged*() =
-  private_access ZenContext
-  private_access ZenBase
-  private_access ZenObject
+  private_access EdContext
+  private_access EdBase
+  private_access EdObject

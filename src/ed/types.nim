@@ -1,10 +1,10 @@
-import model_citizen/[deps]
+import ed/[deps]
 import pkg/[serialization, json_serialization]
 
 type
-  ZID* = uint16
+  EID* = uint16
 
-  ZenFlags* = enum
+  EdFlags* = enum
     TRACK_CHILDREN
     SYNC_LOCAL
     SYNC_REMOTE
@@ -37,7 +37,7 @@ type
 
   OperationContext = object
     source*: HashSet[string]
-    when defined(zen_trace):
+    when defined(ed_trace):
       trace*: string
 
   PackedMessageOperation* =
@@ -55,17 +55,17 @@ type
     source*: seq[uint8]  # Short IDs for wire format (Remote)
     source_set*: HashSet[string]  # Full source for internal use (Local) - not serialized
     id_mappings*: seq[IdMapping]  # New mappings for unknown IDs
-    flags*: set[ZenFlags]
-    when defined(zen_trace):
+    flags*: set[EdFlags]
+    when defined(ed_trace):
       trace*: string
       id*: int
       debug*: string
 
   CreateInitializer = proc(
     bin: string,
-    ctx: ZenContext,
+    ctx: EdContext,
     id: string,
-    flags: set[ZenFlags],
+    flags: set[EdFlags],
     op_ctx: OperationContext,
   )
 
@@ -84,7 +84,7 @@ type
     tid*: int
     stringify*: proc(self: ref RootObj): string {.no_side_effect.}
     parse*:
-      proc(ctx: ZenContext, clone_from: string): ref RootObj {.no_side_effect.}
+      proc(ctx: EdContext, clone_from: string): ref RootObj {.no_side_effect.}
 
   SubscriptionKind* = enum
     BLANK
@@ -95,8 +95,8 @@ type
     ctx_id*: string
     # Short ID mappings for this connection
     next_short_id*: uint8  # Next available short ID to assign
-    id_to_short*: Table[string, uint8]  # full context ID → short ID
-    short_to_id*: Table[uint8, string]  # short ID → full context ID
+    id_to_short*: Table[string, uint8]  # full context ID -> short ID
+    short_to_id*: Table[uint8, string]  # short ID -> full context ID
     case kind*: SubscriptionKind
     of LOCAL:
       chan*: Chan[Message]
@@ -107,12 +107,12 @@ type
     else:
       discard
 
-  ZenContext* = ref object
+  EdContext* = ref object
     id*: string
-    changed_callback_zid: ZID
+    changed_callback_eid: EID
     last_id: int
-    close_procs: Table[ZID, proc() {.gcsafe.}]
-    objects*: OrderedTable[string, ref ZenBase]
+    close_procs: Table[EID, proc() {.gcsafe.}]
+    objects*: OrderedTable[string, ref EdBase]
     objects_need_packing*: bool
     ref_pool: Table[string, CountedRef]
     subscribers*: seq[Subscription]
@@ -135,7 +135,7 @@ type
     last_keepalive_tick*: float64
     bytes_sent*: int
     bytes_received*: int
-    when defined(zen_debug_messages):
+    when defined(ed_debug_messages):
       messages_sent*: int
       messages_received*: int
       obj_bytes_sent*: int
@@ -147,19 +147,19 @@ type
       obj_bytes_recv_by_kind*: array[MessageKind, int]
       obj_bytes_by_id*: Table[string, int]  # Bytes sent per object ID
       obj_bytes_by_type*: Table[int, int]   # Bytes sent per type ID
-    when defined(dump_zen_objects):
+    when defined(dump_ed_objects):
       dump_at*: MonoTime
       counts*: array[MessageKind, int]
 
-  ZenBase* = object of RootObj
+  EdBase* = object of RootObj
     id*: string
     destroyed*: bool
-    link_zid: ZID
-    paused_zids: set[ZID]
-    bound_zids: seq[ZID]
-    flags*: set[ZenFlags]
+    link_eid: EID
+    paused_eids: set[EID]
+    bound_eids: seq[EID]
+    flags*: set[EdFlags]
     build_message: proc(
-      self: ref ZenBase, change: BaseChange, id: string, trace: string
+      self: ref EdBase, change: BaseChange, id: string, trace: string
     ): Message {.gcsafe.}
 
     publish_create: proc(
@@ -167,31 +167,31 @@ type
     ) {.gcsafe.}
 
     change_receiver:
-      proc(self: ref ZenBase, msg: Message, op_ctx: OperationContext) {.gcsafe.}
+      proc(self: ref EdBase, msg: Message, op_ctx: OperationContext) {.gcsafe.}
 
-    ctx*: ZenContext
+    ctx*: EdContext
 
   ChangeCallback[O] = proc(changes: seq[Change[O]]) {.gcsafe.}
 
-  ZenObject[T, O] = object of ZenBase
-    changed_callbacks: OrderedTable[ZID, ChangeCallback[O]]
+  EdObject[T, O] = object of EdBase
+    changed_callbacks: OrderedTable[EID, ChangeCallback[O]]
     tracked: T
 
-  Zen*[T, O] = ref object of ZenObject[T, O]
+  Ed*[T, O] = ref object of EdObject[T, O]
 
-  ZenTable*[K, V] = Zen[Table[K, V], Pair[K, V]]
-  ZenSeq*[T] = Zen[seq[T], T]
-  ZenSet*[T] = Zen[set[T], T]
-  ZenValue*[T] = Zen[T, T]
+  EdTable*[K, V] = Ed[Table[K, V], Pair[K, V]]
+  EdSeq*[T] = Ed[seq[T], T]
+  EdSet*[T] = Ed[set[T], T]
+  EdValue*[T] = Ed[T, T]
 
 const DEFAULT_FLAGS* = {SYNC_LOCAL, SYNC_REMOTE}
 
-template zen_ignore*() {.pragma.}
+template ed_ignore*() {.pragma.}
 
 proc write_value*[T](w: var JsonWriter, self: set[T]) =
   write_value(w, self.to_seq)
 
-proc write_value*(w: var JsonWriter, self: ZenContext) =
+proc write_value*(w: var JsonWriter, self: EdContext) =
   write_value(w, self.id)
 
 proc write_value*(w: var JsonWriter, self: Subscription) =
@@ -209,7 +209,7 @@ proc to_flatty*(s: var string, msg: Message) =
   # Skip source_set - internal use only
   s.to_flatty msg.id_mappings
   s.to_flatty msg.flags
-  when defined(zen_trace):
+  when defined(ed_trace):
     s.to_flatty msg.trace
     s.to_flatty msg.id
     s.to_flatty msg.debug
@@ -225,7 +225,7 @@ proc from_flatty*(s: string, i: var int, msg: var Message) =
   # source_set not in wire format
   s.from_flatty(i, msg.id_mappings)
   s.from_flatty(i, msg.flags)
-  when defined(zen_trace):
+  when defined(ed_trace):
     s.from_flatty(i, msg.trace)
     s.from_flatty(i, msg.id)
     s.from_flatty(i, msg.debug)

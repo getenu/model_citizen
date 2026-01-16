@@ -1,9 +1,9 @@
 import std/[typetraits, macros, macrocache]
-import model_citizen/[core, components/private/tracking]
-import model_citizen/components/private/global_state
+import ed/[core, components/private/tracking]
+import ed/components/private/global_state
 import
-  model_citizen/types {.all.},
-  model_citizen/zens/[validations, operations, contexts, private]
+  ed/types {.all.},
+  ed/zens/[validations, operations, contexts, private]
 
 export new_ident_node
 
@@ -11,19 +11,19 @@ const INITIALIZERS = CacheSeq"INITIALIZERS"
 var type_initializers: Table[int, CreateInitializer]
 var initialized = false
 
-proc ctx(): ZenContext =
-  Zen.thread_ctx
+proc ctx(): EdContext =
+  Ed.thread_ctx
 
-proc create_initializer[T, O](self: Zen[T, O]) =
-  const zen_type_id = self.type.tid
+proc create_initializer[T, O](self: Ed[T, O]) =
+  const ed_type_id = self.type.tid
 
   static:
     INITIALIZERS.add quote do:
-      type_initializers[zen_type_id] = proc(
+      type_initializers[ed_type_id] = proc(
           bin: string,
-          ctx: ZenContext,
+          ctx: EdContext,
           id: string,
-          flags: set[ZenFlags],
+          flags: set[EdFlags],
           op_ctx: OperationContext,
       ) =
         mixin new_ident_node
@@ -31,40 +31,40 @@ proc create_initializer[T, O](self: Zen[T, O]) =
           debug "creating received object", id
           if not ctx.subscribing and id notin ctx:
             var value = bin.from_flatty(T, ctx)
-            discard Zen.init(value, ctx = ctx, id = id, flags = flags, op_ctx)
+            discard Ed.init(value, ctx = ctx, id = id, flags = flags, op_ctx)
           elif not ctx.subscribing:
             debug "restoring received object", id
             var value = bin.from_flatty(T, ctx)
-            let item = Zen[T, O](ctx[id])
+            let item = Ed[T, O](ctx[id])
             `value=`(item, value, op_ctx = op_ctx)
           else:
             if id notin ctx:
-              discard Zen[T, O].init(ctx = ctx, id = id, flags = flags, op_ctx)
+              discard Ed[T, O].init(ctx = ctx, id = id, flags = flags, op_ctx)
 
             let initializer = proc() =
               debug "deferred restore of received object value", id
               {.gcsafe.}:
                 let value = bin.from_flatty(T, ctx)
-              let item = Zen[T, O](ctx[id])
+              let item = Ed[T, O](ctx[id])
               `value=`(item, value, op_ctx = op_ctx)
             ctx.value_initializers.add(initializer)
         elif id notin ctx:
-          discard Zen[T, O].init(ctx = ctx, id = id, flags = flags, op_ctx)
+          discard Ed[T, O].init(ctx = ctx, id = id, flags = flags, op_ctx)
 
 proc defaults[T, O](
-    self: Zen[T, O], ctx: ZenContext, id: string, op_ctx: OperationContext
-): Zen[T, O] =
+    self: Ed[T, O], ctx: EdContext, id: string, op_ctx: OperationContext
+): Ed[T, O] =
   privileged
   log_defaults
 
   create_initializer(self)
 
-  # Register the Zen type name for debugging
-  const zen_type_id = Zen[T, O].tid
-  const zen_type_name = $Zen[T, O]
+  # Register the Ed type name for debugging
+  const ed_type_id = Ed[T, O].tid
+  const ed_type_name = $Ed[T, O]
   {.gcsafe.}:
-    if zen_type_id notin global_type_name_registry[]:
-      global_type_name_registry[][zen_type_id] = zen_type_name
+    if ed_type_id notin global_type_name_registry[]:
+      global_type_name_registry[][ed_type_id] = ed_type_name
 
   self.id =
     if id == "":
@@ -81,7 +81,7 @@ proc defaults[T, O](
   self.publish_create = proc(
       sub: Subscription, broadcast: bool, op_ctx = OperationContext()
   ) =
-    log_defaults "model_citizen publishing"
+    log_defaults "ed publishing"
     debug "publish_create", sub
 
     {.gcsafe.}:
@@ -90,18 +90,18 @@ proc defaults[T, O](
     let flags = self.flags
 
     template send_msg(src_ctx, sub) =
-      const zen_type_id = self.type.tid
+      const ed_type_id = self.type.tid
 
       var msg = Message(
         kind: CREATE,
         obj: bin,
         flags: flags,
-        type_id: zen_type_id,
+        type_id: ed_type_id,
         object_id: id,
         # source is set by send() based on subscription type
       )
 
-      when defined(zen_trace):
+      when defined(ed_trace):
         msg.trace = get_stack_trace()
 
       src_ctx.send(sub, msg, op_ctx, flags = self.flags & {SYNC_ALL_NO_OVERWRITE})
@@ -115,17 +115,17 @@ proc defaults[T, O](
     ctx.tick_reactor
 
   self.build_message = proc(
-      self: ref ZenBase, change: BaseChange, id, trace: string
+      self: ref EdBase, change: BaseChange, id, trace: string
   ): Message =
-    var msg = Message(object_id: id, type_id: Zen[T, O].tid)
-    when defined(zen_trace):
+    var msg = Message(object_id: id, type_id: Ed[T, O].tid)
+    when defined(ed_trace):
       msg.trace = trace
     assert ADDED in change.changes or REMOVED in change.changes or
       TOUCHED in change.changes
     let change = Change[O](change)
-    when change.item is Zen:
+    when change.item is Ed:
       msg.change_object_id = change.item.id
-    elif change.item is Pair[auto, Zen]:
+    elif change.item is Pair[auto, Ed]:
       # TODO: Properly sync ref keys
       {.gcsafe.}:
         msg.obj = change.item.key.to_flatty
@@ -159,27 +159,27 @@ proc defaults[T, O](
     result = msg
 
   self.change_receiver = proc(
-      self: ref ZenBase, msg: Message, op_ctx: OperationContext
+      self: ref EdBase, msg: Message, op_ctx: OperationContext
   ) =
-    assert self of Zen[T, O]
-    let self = Zen[T, O](self)
+    assert self of Ed[T, O]
+    let self = Ed[T, O](self)
 
     if msg.kind == DESTROY:
       self.destroy
       return
 
-    when O is Zen:
+    when O is Ed:
       let object_id = msg.change_object_id
       assert object_id in self.ctx
       let item = O(self.ctx.objects[object_id])
-    elif O is Pair[auto, Zen]:
+    elif O is Pair[auto, Ed]:
       # Workaround for compile issue. This should be `O`, not `O.default.type`.
       type K = generic_params(O.default.type).get(0)
       type V = generic_params(O.default.type).get(1)
       if msg.object_id notin self.ctx:
-        when defined(zen_trace):
+        when defined(ed_trace):
           echo msg.trace
-        fail "object not in context " & msg.object_id & " " & $Zen[T, O]
+        fail "object not in context " & msg.object_id & " " & $Ed[T, O]
 
       if msg.change_object_id notin self.ctx and msg.kind == UNASSIGN:
         debug "can't find ", obj = msg.change_object_id
@@ -226,7 +226,7 @@ proc defaults[T, O](
   self
 
 proc init*(
-    T: type Zen,
+    T: type Ed,
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
@@ -242,152 +242,152 @@ proc init*(
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[string, string] =
+): Ed[string, string] =
   ctx.setup_op_ctx
-  result = Zen[string, string](flags: flags).defaults(ctx, id, op_ctx)
+  result = Ed[string, string](flags: flags).defaults(ctx, id, op_ctx)
 
 proc init*(
-    _: type Zen,
+    _: type Ed,
     T: type[ref | object | array | SomeOrdinal | SomeNumber],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[T, T] =
+): Ed[T, T] =
   ctx.setup_op_ctx
-  result = Zen[T, T](flags: flags).defaults(ctx, id, op_ctx)
+  result = Ed[T, T](flags: flags).defaults(ctx, id, op_ctx)
 
 proc init*[T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string | ptr](
-    _: type Zen,
+    _: type Ed,
     tracked: T,
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[T, T] =
+): Ed[T, T] =
   ctx.setup_op_ctx
-  var self = Zen[T, T](flags: flags).defaults(ctx, id, op_ctx)
+  var self = Ed[T, T](flags: flags).defaults(ctx, id, op_ctx)
 
   mutate(op_ctx):
     self.tracked = tracked
   result = self
 
 proc init*[O](
-    _: type Zen,
+    _: type Ed,
     tracked: set[O],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[set[O], O] =
+): Ed[set[O], O] =
   ctx.setup_op_ctx
-  var self = Zen[set[O], O](flags: flags).defaults(ctx, id, op_ctx)
+  var self = Ed[set[O], O](flags: flags).defaults(ctx, id, op_ctx)
 
   mutate(op_ctx):
     self.tracked = tracked
   result = self
 
 proc init*[K, V](
-    _: type Zen,
+    _: type Ed,
     tracked: Table[K, V],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): ZenTable[K, V] =
+): EdTable[K, V] =
   ctx.setup_op_ctx
-  var self = ZenTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
+  var self = EdTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
 
   mutate(op_ctx):
     self.tracked = tracked
   result = self
 
 proc init*[O](
-    _: type Zen,
+    _: type Ed,
     tracked: seq[O],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[seq[O], O] =
+): Ed[seq[O], O] =
   ctx.setup_op_ctx
-  var self = Zen[seq[O], O](flags: flags).defaults(ctx, id, op_ctx)
+  var self = Ed[seq[O], O](flags: flags).defaults(ctx, id, op_ctx)
 
   mutate(op_ctx):
     self.tracked = tracked
   result = self
 
 proc init*[O](
-    _: type Zen,
+    _: type Ed,
     T: type seq[O],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[seq[O], O] =
+): Ed[seq[O], O] =
   ctx.setup_op_ctx
-  result = Zen[seq[O], O](flags: flags).defaults(ctx, id, op_ctx)
+  result = Ed[seq[O], O](flags: flags).defaults(ctx, id, op_ctx)
 
 proc init*[O](
-    _: type Zen,
+    _: type Ed,
     T: type set[O],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[set[O], O] =
+): Ed[set[O], O] =
   ctx.setup_op_ctx
-  result = Zen[set[O], O](flags: flags).defaults(ctx, id, op_ctx)
+  result = Ed[set[O], O](flags: flags).defaults(ctx, id, op_ctx)
 
 proc init*[K, V](
-    _: type Zen,
+    _: type Ed,
     T: type Table[K, V],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): Zen[Table[K, V], Pair[K, V]] =
+): Ed[Table[K, V], Pair[K, V]] =
   ctx.setup_op_ctx
-  result = Zen[Table[K, V], Pair[K, V]](flags: flags).defaults(ctx, id, op_ctx)
+  result = Ed[Table[K, V], Pair[K, V]](flags: flags).defaults(ctx, id, op_ctx)
 
 proc init*(
-    _: type Zen,
+    _: type Ed,
     K, V: type,
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): ZenTable[K, V] =
+): EdTable[K, V] =
   ctx.setup_op_ctx
-  result = ZenTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
+  result = EdTable[K, V](flags: flags).defaults(ctx, id, op_ctx)
 
-proc zen_init_private*[K, V](
+proc ed_init_private*[K, V](
     tracked: seq[(K, V)],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
-): ZenTable[K, V] =
+): EdTable[K, V] =
   ctx.setup_op_ctx
-  result = Zen.init(
+  result = Ed.init(
     tracked.to_table, flags = flags, ctx = ctx, id = id, op_ctx = op_ctx
   )
 
 proc init*[T, O](
-    self: var Zen[T, O],
+    self: var Ed[T, O],
     flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
 ) =
-  self = Zen[T, O].init(ctx = ctx, flags = flags, id = id, op_ctx = op_ctx)
+  self = Ed[T, O].init(ctx = ctx, flags = flags, id = id, op_ctx = op_ctx)
 
-proc init_zen_fields*[T: object or ref](
+proc init_ed_fields*[T: object or ref](
     self: T, flags = DEFAULT_FLAGS, ctx = ctx()
 ): T {.discardable.} =
   result = self
   for field in fields(self.deref):
-    when field is Zen:
+    when field is Ed:
       field.init(ctx = ctx, flags = flags)
 
 proc init_from*[T: object or ref](
@@ -395,7 +395,7 @@ proc init_from*[T: object or ref](
 ): T {.discardable.} =
   result = T()
   for src, dest in fields(src.deref, result.deref):
-    when dest is Zen:
+    when dest is Ed:
       dest = ctx[src]
 
 macro `~`*(body: untyped): untyped =
@@ -407,12 +407,12 @@ macro `~`*(body: untyped): untyped =
   result = quote:
     when compiles(value(`args`)):
       value(`args`)
-    elif compiles(zen_init_private(`args`)):
-      zen_init_private(`args`)
+    elif compiles(ed_init_private(`args`)):
+      ed_init_private(`args`)
     else:
-      Zen.init(`args`)
+      Ed.init(`args`)
 
-macro bootstrap*(_: type Zen): untyped =
+macro bootstrap*(_: type Ed): untyped =
   result = new_stmt_list()
   for initializer in INITIALIZERS:
     result.add initializer

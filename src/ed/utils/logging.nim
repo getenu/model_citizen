@@ -1,6 +1,6 @@
 import std/sets
-import model_citizen/types {.all.}
-import model_citizen/components/private/global_state
+import ed/types {.all.}
+import ed/components/private/global_state
 const chronicles_enabled* {.strdefine.} = "off"
 
 when chronicles_enabled == "on":
@@ -8,7 +8,7 @@ when chronicles_enabled == "on":
   export chronicles
 
   # Format types for concise logging
-  chronicles.format_it(ZenContext): it.id
+  chronicles.format_it(EdContext): it.id
   chronicles.format_it(Subscription): $it.kind & " sub for " & it.ctx_id
   chronicles.format_it(OperationContext):
     if it.source.len == 0:
@@ -20,7 +20,7 @@ when chronicles_enabled == "on":
 
   # Must be explicitly called from generic procs due to
   # https://github.com/status-im/nim-chronicles/issues/121
-  template log_defaults*(log_topics = "model_citizen") =
+  template log_defaults*(log_topics = "ed") =
     log_scope:
       topics = log_topics
       thread_ctx = active_ctx.id

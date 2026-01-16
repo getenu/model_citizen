@@ -1,7 +1,7 @@
 import std/[unittest, monotimes, sets, tables, strutils]
 import pkg/[pretty, chronicles]
-import model_citizen
-import model_citizen/utils/[stats, misc, typeids]
+import ed
+import ed/utils/[stats, misc, typeids]
 from std/times import seconds, init_duration
 
 proc run*() =
@@ -135,5 +135,5 @@ proc run*() =
     check returns_int().make_discardable() == 42
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

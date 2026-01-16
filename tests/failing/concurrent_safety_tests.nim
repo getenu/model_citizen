@@ -1,16 +1,16 @@
 import std/[unittest, os, locks]
 import pkg/[pretty, chronicles]
-import model_citizen
+import ed
 
 var test_lock: Lock
 var modification_count: int
 
-proc concurrent_modifier(ctx: ZenContext) {.thread.} =
-  Zen.thread_ctx = ctx
+proc concurrent_modifier(ctx: EdContext) {.thread.} =
+  Ed.thread_ctx = ctx
   
   # Try to get the shared object
   if "shared_obj" in ctx:
-    let shared_obj = ZenValue[int](ctx["shared_obj"])
+    let shared_obj = EdValue[int](ctx["shared_obj"])
     
     # Rapid modifications
     for i in 1..100:
@@ -24,18 +24,18 @@ proc run*() =
   test_lock.init_lock()
   
   test "concurrent modification during iteration":
-    var ctx1 = ZenContext.init(id = "ctx1")
-    var ctx2 = ZenContext.init(id = "ctx2")
+    var ctx1 = EdContext.init(id = "ctx1")
+    var ctx2 = EdContext.init(id = "ctx2")
     
     ctx2.subscribe(ctx1)
     
-    var shared_obj = ZenValue[int].init(ctx = ctx1, id = "shared_obj")
+    var shared_obj = EdValue[int].init(ctx = ctx1, id = "shared_obj")
     shared_obj.value = 0
     
     ctx2.tick()
     
     # Start concurrent modification
-    var modifier_thread: Thread[ZenContext]
+    var modifier_thread: Thread[EdContext]
     modifier_thread.create_thread(concurrent_modifier, ctx2)
     
     # Meanwhile, try to iterate/read the object
@@ -54,8 +54,8 @@ proc run*() =
     check modification_count > 0
 
   test "concurrent tracking callback registration":
-    var ctx = ZenContext.init(id = "test_ctx")
-    var shared_seq = ZenSeq[string].init(ctx = ctx)
+    var ctx = EdContext.init(id = "test_ctx")
+    var shared_seq = EdSeq[string].init(ctx = ctx)
     
     var callback_count = 0
     
@@ -73,13 +73,13 @@ proc run*() =
     check callback_count == 10
 
   test "concurrent subscription and modification":
-    var ctx1 = ZenContext.init(id = "ctx1")
-    var obj = ZenValue[string].init(ctx = ctx1, id = "racing_obj")
+    var ctx1 = EdContext.init(id = "ctx1")
+    var obj = EdValue[string].init(ctx = ctx1, id = "racing_obj")
     
     # Modify object while subscription is happening
     obj.value = "initial"
     
-    var ctx2 = ZenContext.init(id = "ctx2")
+    var ctx2 = EdContext.init(id = "ctx2")
     
     # This could expose race conditions during subscription
     obj.value = "during_subscription"
@@ -88,11 +88,11 @@ proc run*() =
     
     ctx2.tick()
     
-    let remote_obj = ZenValue[string](ctx2["racing_obj"])
+    let remote_obj = EdValue[string](ctx2["racing_obj"])
     
     # The final value should be consistent, but timing might cause issues
     check remote_obj.value == "after_subscription"
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()

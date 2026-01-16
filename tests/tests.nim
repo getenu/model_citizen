@@ -1,8 +1,8 @@
 import
-  model_citizen, basic_tests, threading_tests, network_tests, publish_tests,
+  ed, basic_tests, threading_tests, network_tests, publish_tests,
   object_tests, utils_tests, validation_tests, error_handling_tests, memory_tests
 
-Zen.bootstrap
+Ed.bootstrap
 
 basic_tests.run()
 threading_tests.run()

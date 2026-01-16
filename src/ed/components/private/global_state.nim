@@ -3,9 +3,9 @@ import std/[tables, intsets, locks]
 import pkg/metrics
 export inc, set
 
-import model_citizen/types {.all.}
+import ed/types {.all.}
 
-var active_ctx* {.threadvar.}: ZenContext
+var active_ctx* {.threadvar.}: EdContext
 
 var local_type_registry* {.threadvar.}: Table[int, RegisteredType]
 var processed_types* {.threadvar.}: IntSet

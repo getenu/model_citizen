@@ -13,10 +13,10 @@
 --define:
   "chronicles_log_level=INFO"
 --define:
-  "zen_trace"
+  "ed_trace"
 --define:
   "metrics"
-# --define:"dump_zen_objects"
+# --define:"dump_ed_objects"
 
 --experimental:
   "overloadable_enums"

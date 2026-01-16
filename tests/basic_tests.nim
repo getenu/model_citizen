@@ -4,17 +4,17 @@ import
     deques, importutils, monotimes, os
   ]
 import pkg/[pretty, chronicles, netty]
-import model_citizen
+import ed
 from std/times import init_duration
-import model_citizen/[types {.all.}, zens {.all.}, zens/contexts {.all.}]
+import ed/[types {.all.}, zens {.all.}, zens/contexts {.all.}]
 
-import model_citizen/components/type_registry
+import ed/components/type_registry
 
 type Vector3 = array[3, float]
 
 proc run*() =
   var change_count = 0
-  proc count_changes(obj: auto): ZID {.discardable.} =
+  proc count_changes(obj: auto): EID {.discardable.} =
     obj.changes:
       change_count += 1
 
@@ -25,7 +25,7 @@ proc run*() =
       echo ast_to_str(body)
       echo "Expected ", expected_count, " changes. Got ", change_count
 
-  template assert_changes[T, O](self: Zen[T, O], expect, body: untyped) =
+  template assert_changes[T, O](self: Ed[T, O], expect, body: untyped) =
     var expectations = expect.to_deque
     self.track proc(changes: seq[Change[O]]) {.gcsafe.} =
       for change in changes:
@@ -43,11 +43,11 @@ proc run*() =
     block local:
       debug "local run"
       var
-        ctx1 {.inject.} = ZenContext.init(id = "ctx1", blocking_recv = true)
-        ctx2 {.inject.} = ZenContext.init(id = "ctx2", blocking_recv = true)
+        ctx1 {.inject.} = EdContext.init(id = "ctx1", blocking_recv = true)
+        ctx2 {.inject.} = EdContext.init(id = "ctx2", blocking_recv = true)
 
       ctx2.subscribe(ctx1)
-      Zen.thread_ctx = ctx1
+      Ed.thread_ctx = ctx1
       ctx1.tick(blocking = false)
 
       body
@@ -57,14 +57,14 @@ proc run*() =
       debug "remote run"
       const recv_duration = init_duration(milliseconds = 10)
       var
-        ctx1 {.inject.} = ZenContext.init(
+        ctx1 {.inject.} = EdContext.init(
           id = "ctx1",
           listen_address = "127.0.0.1",
           min_recv_duration = recv_duration,
           blocking_recv = true,
         )
 
-        ctx2 {.inject.} = ZenContext.init(
+        ctx2 {.inject.} = EdContext.init(
           id = "ctx2", min_recv_duration = recv_duration, blocking_recv = true
         )
 
@@ -72,7 +72,7 @@ proc run*() =
         callback = proc() =
           ctx1.tick(blocking = false)
 
-      Zen.thread_ctx = ctx1
+      Ed.thread_ctx = ctx1
       ctx1.tick(blocking = false)
 
       body
@@ -190,7 +190,7 @@ proc run*() =
     var a = ~{Flag1, Flag3}
 
   test "table literals":
-    var a = ~Table[int, ZenSeq[string]]
+    var a = ~Table[int, EdSeq[string]]
     a.track proc(changes, _: auto) {.gcsafe.} =
       discard
     a[1] = ~(@["nim"])
@@ -198,7 +198,7 @@ proc run*() =
     a.clear
 
   test "touch table":
-    var a = ZenTable[string, string].init
+    var a = EdTable[string, string].init
     let zid = a.count_changes
 
     1.changes:
@@ -214,7 +214,7 @@ proc run*() =
     a[1] = 2
 
   test "nested":
-    var a = ZenTable[int, ZenSeq[int]].init
+    var a = EdTable[int, EdSeq[int]].init
     a[1] = ~(@[1, 2])
     a[1] += 3
 
@@ -308,10 +308,10 @@ proc run*() =
     check 1 notin buffers
 
   test "comparable aliases":
-    var a = ZenTable[int, string].init(id = "1")
-    var b = Zen[Table[int, string], Pair[int, string]].init(id = "1")
-    var c = ZenTable[string, int].init(id = "2")
-    check b is ZenTable[int, string]
+    var a = EdTable[int, string].init(id = "1")
+    var b = Ed[Table[int, string], Pair[int, string]].init(id = "1")
+    var c = EdTable[string, int].init(id = "2")
+    check b is EdTable[int, string]
     check a == b
     when compiles(a == c):
       check false, &"{a.type} and {b.type} shouldn't be comparable"
@@ -324,8 +324,8 @@ proc run*() =
     var a = ~seq[int]
     var b = ~set[TestFlag]
     check:
-      a is Zen[seq[int], int]
-      b is Zen[set[TestFlag], TestFlag]
+      a is Ed[seq[int], int]
+      b is Ed[set[TestFlag], TestFlag]
 
   test "nested_triggers":
     type
@@ -336,8 +336,8 @@ proc run*() =
       Unit = ref object of RootRef
         id: int
         parent: Unit
-        units: Zen[seq[Unit], Unit]
-        flags: ZenSet[UnitFlags]
+        units: Ed[seq[Unit], Unit]
+        flags: EdSet[UnitFlags]
 
     proc init(
         _: type Unit, id = 0, flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
@@ -387,7 +387,7 @@ proc run*() =
     a.units.untrack(id)
 
   test "primitives":
-    let a = ZenValue[int].init
+    let a = EdValue[int].init
     a.assert_changes {
       REMOVED: 0,
       ADDED: 5,
@@ -425,7 +425,7 @@ proc run*() =
       a ~= r3
 
   test "pausing":
-    var s = ZenValue[string].init
+    var s = EdValue[string].init
     let zid = s.count_changes
     2.changes:
       s ~= "one"
@@ -473,22 +473,22 @@ proc run*() =
     let zid = s.track proc(changes: auto) {.gcsafe.} =
       changed = true
       check changes[0].changes == {CLOSED}
-    Zen.thread_ctx.untrack(zid)
+    Ed.thread_ctx.untrack(zid)
     check changed == true
 
   test "init_props":
     type Model = ref object
-      list: ZenSeq[int]
+      list: EdSeq[int]
       field: string
-      zen_field: ZenValue[string]
+      ed_field: EdValue[string]
 
     proc init(_: type Model): Model =
       result = Model()
-      result.init_zen_fields
+      result.init_ed_fields
 
     let m = Model.init
-    m.zen_field ~= "test"
-    check m.zen_field ~== "test"
+    m.ed_field ~= "test"
+    check m.ed_field ~== "test"
 
   test "sync":
     type
@@ -496,20 +496,20 @@ proc run*() =
         id: string
 
       Tree = ref object
-        zen: ZenValue[string]
-        things: ZenSeq[Thing]
-        values: ZenSeq[ZenValue[string]]
+        zen: EdValue[string]
+        things: EdSeq[Thing]
+        values: EdSeq[EdValue[string]]
 
       Container = ref object
-        thing1: ZenValue[Thing]
-        thing2: ZenValue[Thing]
+        thing1: EdValue[Thing]
+        thing2: EdValue[Thing]
 
-    Zen.register(Thing, false)
+    Ed.register(Thing, false)
 
     local_and_remote:
-      var s1 = ZenValue[string].init(ctx = ctx1)
+      var s1 = EdValue[string].init(ctx = ctx1)
       ctx2.tick
-      var s2 = ZenValue[string](ctx2[s1])
+      var s2 = EdValue[string](ctx2[s1])
       check s2.ctx != nil
 
       s1 ~= "sync me"
@@ -524,7 +524,7 @@ proc run*() =
 
       var msg = "hello world"
       var another_msg = "another"
-      var src = Tree().init_zen_fields(ctx = ctx1)
+      var src = Tree().init_ed_fields(ctx = ctx1)
       ctx2.tick
       var dest = Tree.init_from(src, ctx = ctx2)
 
@@ -547,7 +547,7 @@ proc run*() =
 
       check dest.things.len == 0
 
-      var container = Container().init_zen_fields(ctx = ctx1)
+      var container = Container().init_ed_fields(ctx = ctx1)
 
       var t = Thing(id: "Scott")
       ctx2.tick
@@ -562,24 +562,24 @@ proc run*() =
 
       check remote_container.thing1.value.id == container.thing1.value.id
       check remote_container.thing1.value == remote_container.thing2.value
-      var s3 = ZenValue[string].init(ctx = ctx1)
+      var s3 = EdValue[string].init(ctx = ctx1)
       src.values += s3
       s3.value = "hi"
       ctx2.tick
       check dest.values[^1].value == "hi"
 
-      var ctx3 = ZenContext.init(id = "ctx3")
-      Zen.thread_ctx = ctx3
+      var ctx3 = EdContext.init(id = "ctx3")
+      Ed.thread_ctx = ctx3
       ctx3.subscribe(ctx2, bidirectional = false)
-      Zen.thread_ctx = ctx1
+      Ed.thread_ctx = ctx1
       check ctx3.len == ctx1.len
       src.values += ~("", ctx = ctx1)
       check ctx1.len != ctx2.len and ctx1.len != ctx3.len
       ctx2.tick
       check ctx1.len == ctx2.len and ctx1.len != ctx3.len
-      Zen.thread_ctx = ctx3
+      Ed.thread_ctx = ctx3
       ctx3.tick
-      Zen.thread_ctx = ctx1
+      Ed.thread_ctx = ctx1
       check ctx1.len == ctx2.len and ctx1.len == ctx3.len
 
   test "delete":
@@ -598,16 +598,16 @@ proc run*() =
 
   test "sync nested":
     type Unit = ref object of RootObj
-      units: ZenSeq[Unit]
-      code: ZenValue[string]
+      units: EdSeq[Unit]
+      code: EdValue[string]
       id: int
 
-    Zen.register(Unit, false)
+    Ed.register(Unit, false)
     local_and_remote:
       var u1 = Unit(id: 1)
       var u2 = Unit(id: 2)
-      u1.init_zen_fields
-      u2.init_zen_fields
+      u1.init_ed_fields
+      u2.init_ed_fields
       ctx2.tick
 
       var ru1 = Unit.init_from(u1, ctx = ctx2)
@@ -619,16 +619,16 @@ proc run*() =
   test "zentable of tables":
     type Shared = ref object of RootObj
       id: string
-      edits: ZenTable[int, Table[string, string]]
+      edits: EdTable[int, Table[string, string]]
 
-    Zen.register(Shared, false)
+    Ed.register(Shared, false)
 
     local_and_remote:
-      var container: ZenValue[Shared]
+      var container: EdValue[Shared]
       container.init
 
       var shared = Shared(id: "1")
-      shared.init_zen_fields
+      shared.init_ed_fields
 
       container.value = shared
       container.value.edits[1] = {"1": "one", "2": "two"}.to_table
@@ -649,28 +649,28 @@ proc run*() =
   test "zentable of zentables":
     type Block = ref object of RootObj
       id: string
-      chunks: ZenTable[int, ZenTable[string, string]]
+      chunks: EdTable[int, EdTable[string, string]]
 
     local_and_remote:
-      var container: ZenValue[Block]
+      var container: EdValue[Block]
       container.init
 
       var shared = Block(id: "2")
-      shared.init_zen_fields
+      shared.init_ed_fields
 
       ctx2.tick
       var shared2 = Block.init_from(shared, ctx = ctx2)
 
-      shared.chunks[1] = ZenTable[string, string].init
+      shared.chunks[1] = EdTable[string, string].init
       shared.chunks[1]["hello"] = "world"
-      Zen.thread_ctx = ctx2
+      Ed.thread_ctx = ctx2
       ctx2.tick
 
       check addr(shared.chunks[]) != addr(shared2.chunks[])
       check shared2.chunks[1]["hello"] == "world"
 
       shared2.chunks[1]["hello"] = "goodbye"
-      Zen.thread_ctx = ctx1
+      Ed.thread_ctx = ctx1
       ctx1.tick
 
       check shared.chunks[1]["hello"] == "goodbye"
@@ -679,19 +679,19 @@ proc run*() =
     type RefType = ref object of RootObj
       id: string
 
-    Zen.register(RefType, false)
+    Ed.register(RefType, false)
 
     local_and_remote:
-      var src = ZenSeq[RefType].init
+      var src = EdSeq[RefType].init
 
       var obj = RefType(id: "1")
 
       src += obj
 
       ctx2.tick
-      var dest = ZenSeq[RefType](ctx2[src])
+      var dest = EdSeq[RefType](ctx2[src])
 
-      private_access ZenContext
+      private_access EdContext
       private_access CountedRef
 
       check obj.ref_id in ctx1.ref_pool
@@ -736,9 +736,9 @@ proc run*() =
 
     local_and_remote:
       let msg = "hello world"
-      var src = ZenSet[Flags].init
+      var src = EdSet[Flags].init
       ctx2.tick
-      var dest = ZenSet[Flags](ctx2[src])
+      var dest = EdSet[Flags](ctx2[src])
       src += One
       ctx2.tick
       check dest.value == {One}
@@ -749,7 +749,7 @@ proc run*() =
   test "seq of tuples":
     local_and_remote:
       let val = ("hello", 1)
-      let z = ZenSeq[val.type].init
+      let z = EdSeq[val.type].init
       ctx2.tick
       z += val
       ctx2.tick
@@ -764,10 +764,10 @@ proc run*() =
 
     local_and_remote:
       let a = RefType(id: "a")
-      var src = ZenValue[ptr RefType].init
+      var src = EdValue[ptr RefType].init
 
       ctx2.tick
-      var dest = ZenValue[ptr RefType](ctx2[src])
+      var dest = EdValue[ptr RefType](ctx2[src])
 
       src.value = unsafe_addr(a)
       ctx2.tick
@@ -785,14 +785,14 @@ proc run*() =
         target: RefType2
         other: string
 
-    Zen.register(RefType3, false)
+    Ed.register(RefType3, false)
 
     local_and_remote:
       let a = Query(target: RefType3(id: "b"), other: "hello")
-      var src = ZenValue[Query].init
+      var src = EdValue[Query].init
 
       ctx2.tick
-      var dest = ZenValue[Query](ctx2[src])
+      var dest = EdValue[Query](ctx2[src])
 
       src.value = a
       ctx2.tick
@@ -811,17 +811,17 @@ proc run*() =
       SyncUnit = ref object of RootRef
         id: int
         parent: SyncUnit
-        units: ZenSeq[SyncUnit]
+        units: EdSeq[SyncUnit]
 
       State = ref object
-        units: ZenSeq[SyncUnit]
+        units: EdSeq[SyncUnit]
         active: SyncUnit
 
-    Zen.register(SyncUnit, false)
+    Ed.register(SyncUnit, false)
 
     local_and_remote:
       let flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
-      var src = State().init_zen_fields(flags = flags)
+      var src = State().init_ed_fields(flags = flags)
 
       ctx2.tick
       var dest = State.init_from(src, ctx = ctx2)
@@ -840,11 +840,11 @@ proc run*() =
           change = Change[SyncUnit](change.triggered_by[0])
         dest_change_id = change.item.id
 
-      let base = SyncUnit(id: 1).init_zen_fields(flags = flags)
+      let base = SyncUnit(id: 1).init_ed_fields(flags = flags)
       src.units.add base
       ctx2.tick
 
-      let child = SyncUnit(id: 3).init_zen_fields(flags = flags)
+      let child = SyncUnit(id: 3).init_ed_fields(flags = flags)
       ctx2.tick
       src_change_id = 0
       dest_change_id = 0
@@ -854,9 +854,9 @@ proc run*() =
       check src_change_id == 3
       check dest_change_id == 3
 
-      Zen.thread_ctx = ctx2
+      Ed.thread_ctx = ctx2
       let grandchild =
-        SyncUnit(id: 4).init_zen_fields(ctx = ctx2, flags = flags)
+        SyncUnit(id: 4).init_ed_fields(ctx = ctx2, flags = flags)
 
       dest.units[0].units.add grandchild
 
@@ -865,5 +865,5 @@ proc run*() =
       check dest_change_id == 4
 
 when is_main_module:
-  Zen.bootstrap
+  Ed.bootstrap
   run()
