@@ -369,6 +369,7 @@ proc process_value_initializers(self: EdContext) =
   self.value_initializers = @[]
 
 proc subscribe*(self: EdContext, ctx: EdContext, bidirectional = true) =
+  ## Subscribe to another local context for cross-thread sync.
   privileged
   debug "local subscribe", ctx = self.id
   self.pack_objects
@@ -395,8 +396,7 @@ proc subscribe*(
     bidirectional = true,
     callback: proc() {.gcsafe.} = nil,
 ) =
-  # callback param is a hack to allow testing networked contexts on the same
-  # thread. Not meant to be used in non-test code
+  ## Subscribe to a remote context for network sync. Address format: "host" or "host:port".
   var address = address
   var port = 9632
 
@@ -562,6 +562,8 @@ proc untrack*[T, O](self: Ed[T, O], zid: EID) =
 proc track*[T, O](
     self: Ed[T, O], callback: proc(changes: seq[Change[O]]) {.gcsafe.}
 ): EID {.discardable.} =
+  ## Register a callback to be called when the container changes. Returns an EID
+  ## that can be used to untrack the callback later.
   privileged
   log_defaults
 
@@ -596,6 +598,7 @@ proc tick*(
     blocking = self.blocking_recv,
     poll = true,
 ) {.gcsafe.} =
+  ## Process incoming messages from subscribed contexts. Call regularly to receive updates.
   ticks_counter.inc(label_values = [self.metrics_label])
 
   pressure_gauge.set(self.pressure, label_values = [self.metrics_label])

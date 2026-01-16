@@ -232,6 +232,7 @@ proc init*(
     id = "",
     op_ctx = OperationContext(),
 ): T =
+  ## Initialize an empty Ed container of the given type.
   ctx.setup_op_ctx
   T(flags: flags).defaults(ctx, id, op_ctx)
 
@@ -373,6 +374,7 @@ proc init*[T, O](
 proc init_ed_fields*[T: object or ref](
     self: T, flags = DEFAULT_FLAGS, ctx = ctx()
 ): T {.discardable.} =
+  ## Initialize all Ed fields on an object. Call after creating an object with Ed fields.
   result = self
   for field in fields(self.deref):
     when field is Ed:
@@ -381,6 +383,7 @@ proc init_ed_fields*[T: object or ref](
 proc init_from*[T: object or ref](
     _: type T, src: T, ctx = ctx()
 ): T {.discardable.} =
+  ## Create an object by looking up Ed fields from a source object in a different context.
   result = T()
   for src, dest in fields(src.deref, result.deref):
     when dest is Ed:
@@ -392,6 +395,7 @@ proc ed*[T](value: T): EdValue[T] =
   result = EdValue[T].init(value)
 
 macro bootstrap*(_: type Ed): untyped =
+  ## Initialize the Ed runtime. Call once at application startup before creating Ed containers.
   result = new_stmt_list()
   for initializer in INITIALIZERS:
     result.add initializer

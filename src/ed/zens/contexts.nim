@@ -57,6 +57,7 @@ proc init*(
     min_recv_duration = Duration.default,
     label = "default",
 ): EdContext =
+  ## Create a new EdContext. Set `listen_address` to enable network sync.
   privileged
   log_scope:
     topics = "ed"
@@ -89,6 +90,7 @@ proc init*(
     result.reactor = new_reactor(listen_address, port)
 
 proc thread_ctx*(t: type Ed): EdContext =
+  ## Get the current thread's EdContext. Creates one if it doesn't exist.
   if active_ctx == nil:
     active_ctx = EdContext.init(id = "thread-" & $get_thread_id())
   active_ctx
@@ -170,11 +172,13 @@ proc tick_keepalives*(self: EdContext) {.gcsafe.} =
   self.reactor.tick
 
 proc clear*(self: EdContext) =
+  ## Remove all objects from this context.
   debug "Clearing EdContext"
   self.objects.clear
   self.objects_need_packing = false
 
 proc close*(self: EdContext) =
+  ## Close network connections and cleanup resources.
   if ?self.reactor:
     private_access Reactor
     self.reactor.socket.close()

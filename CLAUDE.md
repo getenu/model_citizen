@@ -1,10 +1,10 @@
-# model_citizen - Data Model Library for Nim
+# Ed - Reactive Data Framework for Nim
 
-`model_citizen` is a data model library written in Nim that provides thread-safe and network-synchronized data structures with reactive programming capabilities. It's designed to sync data across threads and the network while allowing components to react to changes.
+Ed (formerly model_citizen/Zen) is a reactive data framework for Nim that provides thread-safe and network-synchronized data structures. It's designed to sync data across threads and the network while allowing components to react to changes.
 
 ## Project Overview
 
-This library provides "Zen" objects - reactive data containers that can:
+This library provides "Ed" objects - reactive data containers that can:
 - Sync data across multiple threads
 - Sync data across network connections
 - Track changes and notify subscribers
@@ -13,11 +13,11 @@ This library provides "Zen" objects - reactive data containers that can:
 
 ## Key Architecture Components
 
-### Core Types (`src/model_citizen/types.nim`)
-- **ZenContext**: Central coordination object managing object lifecycle, subscriptions, and message passing
-- **ZenBase**: Base class for all reactive objects
-- **Zen[T, O]**: Generic reactive container for type T with change objects of type O
-- **ZenTable[K, V]**, **ZenSeq[T]**, **ZenSet[T]**, **ZenValue[T]**: Specialized reactive collections
+### Core Types (`src/ed/types.nim`)
+- **EdContext**: Central coordination object managing object lifecycle, subscriptions, and message passing
+- **EdBase**: Base class for all reactive objects
+- **Ed[T, O]**: Generic reactive container for type T with change objects of type O
+- **EdTable[K, V]**, **EdSeq[T]**, **EdSet[T]**, **EdValue[T]**: Specialized reactive collections
 - **Change[O]**: Represents modifications to objects with change tracking
 - **Subscription**: Manages local/remote connections for data synchronization
 
@@ -49,7 +49,7 @@ This compiles and runs all test suites. Tests pass successfully with some warnin
 - Uses Nim config in `tests/config.nims` with:
   - ORC memory management (`--mm:orc`)
   - Threading enabled (`--threads:on`)
-  - Various debugging flags including `zen_trace` and `metrics`
+  - Various debugging flags including `ed_trace` and `metrics`
   - Chronicles logging enabled
 
 ### Dependencies
@@ -71,39 +71,43 @@ Key dependencies from `model_citizen.nimble`:
 - Automatic serialization/deserialization with flatty
 
 ### Change Tracking
-- Detailed change notifications with `ChangeKind` (Created, Added, Removed, Modified, Touched, Closed)
+- Detailed change notifications with `ChangeKind` (CREATED, ADDED, REMOVED, MODIFIED, TOUCHED, CLOSED)
 - Reactive callbacks triggered on data modifications
 - Change propagation through object hierarchies
 
 ### Memory Management
 - Reference counting with `CountedRef` for shared objects
 - Automatic cleanup of unused references
-- Object lifecycle management through ZenContext
+- Object lifecycle management through EdContext
 
 ## Usage Patterns
 
 ### Basic Usage
 ```nim
-# Create a context
-var ctx = ZenContext.init(id = "main")
+import ed
 
-# Create reactive objects
-var zen_table = ZenTable[string, int].init(ctx)
-var zen_seq = ZenSeq[string].init(ctx)
+Ed.bootstrap
+
+# Create reactive values
+let name = ed("hello")
+var items = EdSeq[string].init
 
 # Track changes
-zen_table.track proc(changes: seq[Change[Pair[string, int]]]) =
-  echo "Table changed: ", changes
+items.track proc(changes: auto) =
+  for change in changes:
+    if ADDED in change.changes:
+      echo "Added: ", change.item
 
 # Modify data (triggers callbacks)
-zen_table["key"] = 42
+name.value = "world"
+items.add "one"
 ```
 
 ### Cross-Thread Synchronization
 ```nim
 # Set up contexts in different threads
-var ctx1 = ZenContext.init(id = "thread1")
-var ctx2 = ZenContext.init(id = "thread2")
+var ctx1 = EdContext.init(id = "thread1")
+var ctx2 = EdContext.init(id = "thread2")
 
 # Subscribe for sync
 ctx2.subscribe(ctx1)

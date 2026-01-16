@@ -50,6 +50,7 @@ proc clear*[T, O](self: Ed[T, O]) =
     self.tracked = T.default
 
 proc `value=`*[T, O](self: Ed[T, O], value: T, op_ctx = OperationContext()) =
+  ## Set the container's value. Triggers change callbacks and sync.
   privileged
   assert self.valid
   self.ctx.setup_op_ctx
@@ -58,6 +59,7 @@ proc `value=`*[T, O](self: Ed[T, O], value: T, op_ctx = OperationContext()) =
       self.tracked = value
 
 proc value*[T, O](self: Ed[T, O]): T =
+  ## Get the container's current value.
   privileged
   assert self.valid
   self.tracked
@@ -87,6 +89,7 @@ proc `[]=`*[T](
     self.tracked[index] = value
 
 proc add*[T, O](self: Ed[T, O], value: O, op_ctx = OperationContext()) =
+  ## Add an item to a sequence container.
   privileged
   self.ctx.setup_op_ctx
   when O is Ed:
@@ -233,6 +236,7 @@ proc `==`*(a, b: Ed): bool =
     a.id == b.id
 
 proc pause_changes*(self: Ed, eids: varargs[EID]) =
+  ## Pause change callbacks. Pass specific EIDs or none to pause all.
   assert self.valid
   if eids.len == 0:
     for eid in self.changed_callbacks.keys:
@@ -242,6 +246,7 @@ proc pause_changes*(self: Ed, eids: varargs[EID]) =
       self.paused_eids.incl(eid)
 
 proc resume_changes*(self: Ed, eids: varargs[EID]) =
+  ## Resume change callbacks. Pass specific EIDs or none to resume all.
   assert self.valid
   if eids.len == 0:
     self.paused_eids = {}
@@ -272,6 +277,7 @@ template pause*(self: Ed, body: untyped) =
   pause_impl(self, self.changed_callbacks.keys, body)
 
 proc destroy*[T, O](self: Ed[T, O], publish = true) =
+  ## Destroy the container and remove it from its context.
   log_defaults
   debug "destroying", unit = self.id, stack = get_stack_trace()
   assert self.valid
