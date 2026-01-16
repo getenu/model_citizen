@@ -201,13 +201,13 @@ proc ref_count*[O](self: ZenContext, changes: seq[Change[O]], zen_id: string) =
     if not ?change.item:
       continue
     let id = change.item.ref_id
-    if Added in change.changes:
+    if ADDED in change.changes:
       if id notin self.ref_pool:
         debug "saving ref", id
         self.ref_pool[id] = CountedRef()
       self.ref_pool[id].references.incl(zen_id)
       self.ref_pool[id].obj = change.item
-    if Removed in change.changes:
+    if REMOVED in change.changes:
       assert id in self.ref_pool
       self.ref_pool[id].references.excl(zen_id)
       if self.ref_pool[id].references.card == 0:

@@ -5,28 +5,28 @@ type
   ZID* = uint16
 
   ZenFlags* = enum
-    TrackChildren
-    SyncLocal
-    SyncRemote
-    SyncAllNoOverwrite
+    TRACK_CHILDREN
+    SYNC_LOCAL
+    SYNC_REMOTE
+    SYNC_ALL_NO_OVERWRITE
 
   ChangeKind* = enum
-    Created
-    Added
-    Removed
-    Modified
-    Touched
-    Closed
+    CREATED
+    ADDED
+    REMOVED
+    MODIFIED
+    TOUCHED
+    CLOSED
 
   MessageKind* = enum
-    Blank
-    Create
-    Destroy
-    Assign
-    Unassign
-    Touch
-    Subscribe
-    Packed
+    BLANK
+    CREATE
+    DESTROY
+    ASSIGN
+    UNASSIGN
+    TOUCH
+    SUBSCRIBE
+    PACKED
 
   BaseChange* = ref object of RootObj
     changes*: set[ChangeKind]
@@ -87,9 +87,9 @@ type
       proc(ctx: ZenContext, clone_from: string): ref RootObj {.no_side_effect.}
 
   SubscriptionKind* = enum
-    Blank
-    Local
-    Remote
+    BLANK
+    LOCAL
+    REMOTE
 
   Subscription* = ref object
     ctx_id*: string
@@ -98,10 +98,10 @@ type
     id_to_short*: Table[string, uint8]  # full context ID → short ID
     short_to_id*: Table[uint8, string]  # short ID → full context ID
     case kind*: SubscriptionKind
-    of Local:
+    of LOCAL:
       chan*: Chan[Message]
       chan_buffer*: seq[Message]
-    of Remote:
+    of REMOTE:
       connection*: Connection
       last_sent_time*: float64
     else:
@@ -184,7 +184,7 @@ type
   ZenSet*[T] = Zen[set[T], T]
   ZenValue*[T] = Zen[T, T]
 
-const default_flags* = {SyncLocal, SyncRemote}
+const DEFAULT_FLAGS* = {SYNC_LOCAL, SYNC_REMOTE}
 
 template zen_ignore*() {.pragma.}
 

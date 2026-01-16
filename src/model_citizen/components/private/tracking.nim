@@ -30,10 +30,10 @@ proc link_child*[K, V](
     private_access ZenBase
     log_defaults
     child.link_zid = child.track proc(changes: seq[Change[O]]) =
-      if changes.len == 1 and changes[0].changes == {Closed}:
-        # Don't propagate Closed changes
+      if changes.len == 1 and changes[0].changes == {CLOSED}:
+        # Don't propagate CLOSED changes
         return
-      let change = Change.init(pair, {Modified})
+      let change = Change.init(pair, {MODIFIED})
       change.triggered_by = cast[seq[BaseChange]](changes)
       change.triggered_by_type = $O
       self.trigger_callbacks(@[change])
@@ -52,11 +52,11 @@ proc link_child*[T, O, L](self: ZenSeq[T], child: O, obj: L, field_name = "") =
     private_access ZenBase
     log_defaults
     child.link_zid = child.track proc(changes: seq[Change[O]]) =
-      if changes.len == 1 and changes[0].changes == {Closed}:
-        # Don't propagate Closed changes
+      if changes.len == 1 and changes[0].changes == {CLOSED}:
+        # Don't propagate CLOSED changes
         return
 
-      let change = Change.init(obj, {Modified}, field_name = field_name)
+      let change = Change.init(obj, {MODIFIED}, field_name = field_name)
       change.triggered_by = cast[seq[BaseChange]](changes)
       change.triggered_by_type = $O
       self.trigger_callbacks(@[change])
@@ -90,7 +90,7 @@ proc link_or_unlink*[T, O](self: Zen[T, O], change: Change[O], link: bool) =
   template value(change: not Change[Pair]): untyped =
     change.item
 
-  if TrackChildren in self.flags:
+  if TRACK_CHILDREN in self.flags:
     if link:
       when change.value is Zen:
         self.link_child(change.item, change.item)
@@ -113,7 +113,7 @@ proc link_or_unlink*[T, O](self: Zen[T, O], change: Change[O], link: bool) =
 proc link_or_unlink*[T, O](
     self: Zen[T, O], changes: seq[Change[O]], link: bool
 ) =
-  if TrackChildren in self.flags:
+  if TRACK_CHILDREN in self.flags:
     for change in changes:
       self.link_or_unlink(change, link)
 
@@ -122,10 +122,10 @@ proc process_changes*[T](
 ) =
   private_access ZenObject[T, T]
   if initial != self.tracked:
-    var add_flags = {Added, Modified}
-    var del_flags = {Removed, Modified}
+    var add_flags = {ADDED, MODIFIED}
+    var del_flags = {REMOVED, MODIFIED}
     if touch:
-      add_flags.incl Touched
+      add_flags.incl TOUCHED
 
     let changes =
       @[Change.init(initial, del_flags), Change.init(self.tracked, add_flags)]
@@ -135,7 +135,7 @@ proc process_changes*[T](
     self.publish_changes(changes, op_ctx)
     self.trigger_callbacks(changes)
   elif touch:
-    let changes = @[Change.init(self.tracked, {Touched})]
+    let changes = @[Change.init(self.tracked, {TOUCHED})]
     when T isnot Zen and T is ref:
       self.ctx.ref_count(changes, self.id)
 
@@ -153,16 +153,16 @@ proc process_changes*[T: seq | set, O](
   let added = (self.tracked - initial).map_it:
     let changes =
       if it in touch:
-        {Touched}
+        {TOUCHED}
       else:
         {}
-    Change.init(it, {Added} + changes)
-  let removed = (initial - self.tracked).map_it Change.init(it, {Removed})
+    Change.init(it, {ADDED} + changes)
+  let removed = (initial - self.tracked).map_it Change.init(it, {REMOVED})
 
   var touched: seq[Change[O]]
   for item in touch:
     if item in initial:
-      touched.add Change.init(item, {Touched})
+      touched.add Change.init(item, {TOUCHED})
 
   self.link_or_unlink(removed, false)
   self.link_or_unlink(added, true)
@@ -188,15 +188,15 @@ proc process_changes*[K, V](
       for key, value in initial_table.pairs:
         Pair[K, V](key: key, value: value)
     added = (tracked - initial).map_it:
-      var changes = {Added}
+      var changes = {ADDED}
       if it.key in initial_table:
-        changes.incl Modified
+        changes.incl MODIFIED
       Change.init(it, changes)
 
     removed = (initial - tracked).map_it:
-      var changes = {Removed}
+      var changes = {REMOVED}
       if it.key in self.tracked:
-        changes.incl Modified
+        changes.incl MODIFIED
       Change.init(it, changes)
 
   self.link_or_unlink(removed, false)
@@ -295,12 +295,12 @@ proc build_changes[K, V](
 
   if key in self.tracked and self.tracked[key] != value:
     let removed = Change.init(
-      Pair[K, V](key: key, value: self.tracked[key]), {Removed, Modified}
+      Pair[K, V](key: key, value: self.tracked[key]), {REMOVED, MODIFIED}
     )
 
-    var flags = {Added, Modified}
+    var flags = {ADDED, MODIFIED}
     if touch:
-      flags.incl Touched
+      flags.incl TOUCHED
     let added = Change.init(Pair[K, V](key: key, value: value), flags)
     when value is Zen:
       if ?removed.item.value:
@@ -309,9 +309,9 @@ proc build_changes[K, V](
     self.tracked[key] = value
     changes = @[removed, added]
   elif key in self.tracked and touch:
-    changes.add Change.init(Pair[K, V](key: key, value: value), {Touched})
+    changes.add Change.init(Pair[K, V](key: key, value: value), {TOUCHED})
   elif key notin self.tracked:
-    let added = Change.init(Pair[K, V](key: key, value: value), {Added})
+    let added = Change.init(Pair[K, V](key: key, value: value), {ADDED})
     when value is Zen:
       self.link_or_unlink(added, true)
     self.tracked[key] = value
@@ -361,7 +361,7 @@ proc len*[T, O](self: Zen[T, O]): int =
 template remove*(self, key, item_exp, fun, op_ctx) =
   let obj = item_exp
   self.tracked.fun key
-  let removed = @[Change.init(obj, {Removed})]
+  let removed = @[Change.init(obj, {REMOVED})]
   self.link_or_unlink(removed, false)
   when obj isnot Zen and obj is ref:
     self.ctx.ref_count(removed, self.id)

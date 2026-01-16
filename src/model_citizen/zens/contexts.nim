@@ -124,7 +124,7 @@ proc pressure*(self: ZenContext): float =
 
   let values = collect:
     for sub in self.subscribers:
-      if sub.kind == Local:
+      if sub.kind == LOCAL:
         if sub.chan_buffer.len > 0:
           return 1.0
         (sub.chan.len - sub.chan.remaining).float / sub.chan.len.float
@@ -161,7 +161,7 @@ proc tick_keepalives*(self: ZenContext) {.gcsafe.} =
 
   # Send keepalive pings to idle remote subscribers
   for sub in self.subscribers:
-    if sub.kind == Remote and sub.last_sent_time + keepalive_interval <= now:
+    if sub.kind == REMOTE and sub.last_sent_time + keepalive_interval <= now:
       self.bytes_sent += 4  # "PING"
       self.reactor.send(sub.connection, "PING")
       sub.last_sent_time = now

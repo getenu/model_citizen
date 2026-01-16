@@ -7,7 +7,7 @@ import
 
 export new_ident_node
 
-const initializers = CacheSeq"initializers"
+const INITIALIZERS = CacheSeq"INITIALIZERS"
 var type_initializers: Table[int, CreateInitializer]
 var initialized = false
 
@@ -18,7 +18,7 @@ proc create_initializer[T, O](self: Zen[T, O]) =
   const zen_type_id = self.type.tid
 
   static:
-    initializers.add quote do:
+    INITIALIZERS.add quote do:
       type_initializers[zen_type_id] = proc(
           bin: string,
           ctx: ZenContext,
@@ -93,7 +93,7 @@ proc defaults[T, O](
       const zen_type_id = self.type.tid
 
       var msg = Message(
-        kind: Create,
+        kind: CREATE,
         obj: bin,
         flags: flags,
         type_id: zen_type_id,
@@ -104,9 +104,9 @@ proc defaults[T, O](
       when defined(zen_trace):
         msg.trace = get_stack_trace()
 
-      src_ctx.send(sub, msg, op_ctx, flags = self.flags & {SyncAllNoOverwrite})
+      src_ctx.send(sub, msg, op_ctx, flags = self.flags & {SYNC_ALL_NO_OVERWRITE})
 
-    if sub.kind != Blank:
+    if sub.kind != BLANK:
       ctx.send_msg(sub)
     if broadcast:
       for sub in ctx.subscribers:
@@ -120,8 +120,8 @@ proc defaults[T, O](
     var msg = Message(object_id: id, type_id: Zen[T, O].tid)
     when defined(zen_trace):
       msg.trace = trace
-    assert Added in change.changes or Removed in change.changes or
-      Touched in change.changes
+    assert ADDED in change.changes or REMOVED in change.changes or
+      TOUCHED in change.changes
     let change = Change[O](change)
     when change.item is Zen:
       msg.change_object_id = change.item.id
@@ -148,12 +148,12 @@ proc defaults[T, O](
       msg.obj = item
 
     msg.kind =
-      if Touched in change.changes:
-        Touch
-      elif Added in change.changes:
-        Assign
-      elif Removed in change.changes:
-        Unassign
+      if TOUCHED in change.changes:
+        TOUCH
+      elif ADDED in change.changes:
+        ASSIGN
+      elif REMOVED in change.changes:
+        UNASSIGN
       else:
         fail "Can't build message for changes " & $change.changes
     result = msg
@@ -164,7 +164,7 @@ proc defaults[T, O](
     assert self of Zen[T, O]
     let self = Zen[T, O](self)
 
-    if msg.kind == Destroy:
+    if msg.kind == DESTROY:
       self.destroy
       return
 
@@ -181,7 +181,7 @@ proc defaults[T, O](
           echo msg.trace
         fail "object not in context " & msg.object_id & " " & $Zen[T, O]
 
-      if msg.change_object_id notin self.ctx and msg.kind == Unassign:
+      if msg.change_object_id notin self.ctx and msg.kind == UNASSIGN:
         debug "can't find ", obj = msg.change_object_id
         return
       let value = V(self.ctx.objects[msg.change_object_id])
@@ -210,11 +210,11 @@ proc defaults[T, O](
         {.gcsafe.}:
           item = msg.obj.from_flatty(O, self.ctx)
 
-    if msg.kind == Assign:
+    if msg.kind == ASSIGN:
       self.assign(item, op_ctx = op_ctx)
-    elif msg.kind == Unassign:
+    elif msg.kind == UNASSIGN:
       self.unassign(item, op_ctx = op_ctx)
-    elif msg.kind == Touch:
+    elif msg.kind == TOUCH:
       self.touch(item, op_ctx = op_ctx)
     else:
       fail "Can't handle message " & $msg.kind
@@ -227,7 +227,7 @@ proc defaults[T, O](
 
 proc init*(
     T: type Zen,
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -238,7 +238,7 @@ proc init*(
 proc init*(
     _: type,
     T: type[string],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -249,7 +249,7 @@ proc init*(
 proc init*(
     _: type Zen,
     T: type[ref | object | array | SomeOrdinal | SomeNumber],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -260,7 +260,7 @@ proc init*(
 proc init*[T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string | ptr](
     _: type Zen,
     tracked: T,
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -275,7 +275,7 @@ proc init*[T: ref | object | tuple | array | SomeOrdinal | SomeNumber | string |
 proc init*[O](
     _: type Zen,
     tracked: set[O],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -290,7 +290,7 @@ proc init*[O](
 proc init*[K, V](
     _: type Zen,
     tracked: Table[K, V],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -305,7 +305,7 @@ proc init*[K, V](
 proc init*[O](
     _: type Zen,
     tracked: seq[O],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -320,7 +320,7 @@ proc init*[O](
 proc init*[O](
     _: type Zen,
     T: type seq[O],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -331,7 +331,7 @@ proc init*[O](
 proc init*[O](
     _: type Zen,
     T: type set[O],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -342,7 +342,7 @@ proc init*[O](
 proc init*[K, V](
     _: type Zen,
     T: type Table[K, V],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -353,7 +353,7 @@ proc init*[K, V](
 proc init*(
     _: type Zen,
     K, V: type,
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -363,7 +363,7 @@ proc init*(
 
 proc zen_init_private*[K, V](
     tracked: seq[(K, V)],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -375,7 +375,7 @@ proc zen_init_private*[K, V](
 
 proc init*[T, O](
     self: var Zen[T, O],
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
     ctx = ctx(),
     id = "",
     op_ctx = OperationContext(),
@@ -383,7 +383,7 @@ proc init*[T, O](
   self = Zen[T, O].init(ctx = ctx, flags = flags, id = id, op_ctx = op_ctx)
 
 proc init_zen_fields*[T: object or ref](
-    self: T, flags = default_flags, ctx = ctx()
+    self: T, flags = DEFAULT_FLAGS, ctx = ctx()
 ): T {.discardable.} =
   result = self
   for field in fields(self.deref):
@@ -414,5 +414,5 @@ macro `~`*(body: untyped): untyped =
 
 macro bootstrap*(_: type Zen): untyped =
   result = new_stmt_list()
-  for initializer in initializers:
+  for initializer in INITIALIZERS:
     result.add initializer

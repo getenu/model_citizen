@@ -163,7 +163,7 @@ proc send_or_buffer(sub: Subscription, msg: sink Message, buffer: bool) =
 
 proc flush_buffers*(self: ZenContext) =
   for sub in self.subscribers:
-    if sub.kind == Local and sub.chan_buffer.len > 0 and not sub.chan.full:
+    if sub.kind == LOCAL and sub.chan_buffer.len > 0 and not sub.chan.full:
       let buffer = sub.chan_buffer
       sub.chan_buffer.set_len(0)
       for msg in buffer:
@@ -174,7 +174,7 @@ proc send*(
     sub: Subscription,
     msg: sink Message,
     op_ctx = OperationContext(),
-    flags = default_flags,
+    flags = DEFAULT_FLAGS,
 ) =
   log_defaults("model_citizen networking")
   sent_message_counter.inc(label_values = [self.metrics_label])
@@ -196,15 +196,15 @@ proc send*(
   debug "sending message", msg
 
   var msg = msg
-  if sub.kind == Local and SyncLocal in flags:
+  if sub.kind == LOCAL and SYNC_LOCAL in flags:
     # Local: just use the HashSet, no encoding needed
     msg.source_set = source
     sub.send_or_buffer(msg, self.buffer)
-  elif sub.kind == Local and SyncAllNoOverwrite in flags:
+  elif sub.kind == LOCAL and SYNC_ALL_NO_OVERWRITE in flags:
     msg.source_set = source
     msg.obj = ""
     sub.send_or_buffer(msg, self.buffer)
-  elif sub.kind == Remote and SyncRemote in flags:
+  elif sub.kind == REMOTE and SYNC_REMOTE in flags:
     # Remote: encode source to short IDs
     let (encoded_source, new_mappings) = sub.encode_source(source)
     msg.source = encoded_source
@@ -230,7 +230,7 @@ proc send*(
     self.bytes_sent += data.len
     self.reactor.send(sub.connection, data)
     sub.last_sent_time = epoch_time()
-  elif sub.kind == Remote and SyncAllNoOverwrite in flags:
+  elif sub.kind == REMOTE and SYNC_ALL_NO_OVERWRITE in flags:
     # Remote: encode source to short IDs
     let (encoded_source, new_mappings) = sub.encode_source(source)
     msg.source = encoded_source
@@ -260,7 +260,7 @@ proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
         self.ctx.send(
           sub,
           Message(
-            kind: Destroy,
+            kind: DESTROY,
             object_id: self.id,
             trace: \"{get_stack_trace()}\n\nop:\n{op_ctx.trace}",
           ),
@@ -269,7 +269,7 @@ proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
         )
       else:
         self.ctx.send(
-          sub, Message(kind: Destroy, object_id: self.id), op_ctx, self.flags
+          sub, Message(kind: DESTROY, object_id: self.id), op_ctx, self.flags
         )
 
   self.ctx.tick_reactor
@@ -277,7 +277,7 @@ proc publish_destroy*[T, O](self: Zen[T, O], op_ctx: OperationContext) =
 proc pack_messages(msgs: seq[Message]): seq[Message] =
   if msgs.len > 1:
     var packed_msg =
-      Message(kind: Packed, source: msgs[0].source, flags: msgs[0].flags)
+      Message(kind: PACKED, source: msgs[0].source, flags: msgs[0].flags)
     var ops: seq[PackedMessageOperation]
 
     for msg in msgs:
@@ -310,8 +310,8 @@ proc publish_changes*[T, O](
     let obj = self.ctx.objects[id]
 
     for change in changes:
-      if [Added, Removed, Created, Touched].any_it(it in change.changes):
-        if Removed in change.changes and Modified in change.changes:
+      if [ADDED, REMOVED, CREATED, TOUCHED].any_it(it in change.changes):
+        if REMOVED in change.changes and MODIFIED in change.changes:
           # An assign will trigger both an assign and an unassign on the other
           # side. We only want to send a Removed message when an item is
           # removed from a collection.
@@ -354,7 +354,7 @@ proc add_subscriber*(
         from_ctx = self.id, to_ctx = sub.ctx_id, zen_id = id
 
 proc unsubscribe*(self: ZenContext, sub: Subscription) =
-  if sub.kind == Remote:
+  if sub.kind == REMOTE:
     self.reactor.disconnect(sub.connection)
   else:
     # ???
@@ -377,7 +377,7 @@ proc subscribe*(self: ZenContext, ctx: ZenContext, bidirectional = true) =
     remote_objects.incl id
   self.subscribing = true
   ctx.add_subscriber(
-    Subscription(kind: Local, chan: self.chan, ctx_id: self.id),
+    Subscription(kind: LOCAL, chan: self.chan, ctx_id: self.id),
     push_all = bidirectional,
     remote_objects,
   )
@@ -416,12 +416,12 @@ proc subscribe*(
   let connection = self.reactor.connect(address, port)
   self.send(
     Subscription(
-      kind: Remote,
+      kind: REMOTE,
       ctx_id: "temp",
       connection: connection,
       last_sent_time: epoch_time(),
     ),
-    Message(kind: Subscribe),
+    Message(kind: SUBSCRIBE),
   )
 
   var ctx_id = ""
@@ -454,7 +454,7 @@ proc subscribe*(
   var bi_sub: Subscription = nil
   if bidirectional:
     bi_sub = Subscription(
-      kind: Remote,
+      kind: REMOTE,
       connection: connection,
       ctx_id: ctx_id,
       last_sent_time: epoch_time(),
@@ -498,7 +498,7 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
   #   self.last_received_id[src] = msg.id
   debug "receiving", msg, topics = "networking"
 
-  if msg.kind == Packed:
+  if msg.kind == PACKED:
     let ops = msg.obj.from_flatty(seq[PackedMessageOperation])
     for op in ops:
       var new_msg = Message(
@@ -515,7 +515,7 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
       )
 
       self.process_message(new_msg, sub)
-  elif msg.kind == Create:
+  elif msg.kind == CREATE:
     {.gcsafe.}:
       if msg.type_id notin type_initializers:
         print msg
@@ -531,7 +531,7 @@ proc process_message(self: ZenContext, msg: Message, sub: Subscription = nil) =
         OperationContext.init(source = source, ctx = self),
       )
       # :(
-  elif msg.kind != Blank:
+  elif msg.kind != BLANK:
     if msg.object_id notin self:
       # :( this should throw an error
       debug "missing object", object_id = msg.object_id
@@ -552,7 +552,7 @@ proc untrack*[T, O](self: Zen[T, O], zid: ZID) =
   if zid in self.changed_callbacks:
     let callback = self.changed_callbacks[zid]
     if zid notin self.paused_zids:
-      callback(@[Change.init(O, {Closed})])
+      callback(@[Change.init(O, {CLOSED})])
     self.ctx.close_procs.del(zid)
     debug "removing close proc", zid
     self.changed_callbacks.del(zid)
@@ -609,7 +609,7 @@ proc tick*(
 
   buffer_gauge.set(
     float self.subscribers.map_it(
-      if it.kind == Local: it.chan_buffer.len else: 0
+      if it.kind == LOCAL: it.chan_buffer.len else: 0
     ).sum,
     label_values = [self.metrics_label],
   )
@@ -653,7 +653,7 @@ proc tick*(
       for conn in self.dead_connections:
         let subs = self.subscribers
         for sub in subs:
-          if sub.kind == Remote and sub.connection == conn:
+          if sub.kind == REMOTE and sub.connection == conn:
             self.unsubscribe(sub)
 
       self.dead_connections = @[]
@@ -673,11 +673,11 @@ proc tick*(
         # Find subscription for this connection to decode source
         var sub: Subscription = nil
         for s in self.subscribers:
-          if s.kind == Remote and s.connection == raw_msg.conn:
+          if s.kind == REMOTE and s.connection == raw_msg.conn:
             sub = s
             break
 
-        if msg.kind == Subscribe:
+        if msg.kind == SUBSCRIBE:
           # New subscriber - create subscription and extract their ID from mappings
           var source_str = ""
           if msg.id_mappings.len > 0 and msg.source.len > 0:
@@ -690,7 +690,7 @@ proc tick*(
             source_str = "unknown"
 
           var new_sub = Subscription(
-            kind: Remote,
+            kind: REMOTE,
             connection: raw_msg.conn,
             ctx_id: source_str,
             last_sent_time: epoch_time(),
@@ -732,31 +732,31 @@ template changes*[T, O](self: Zen[T, O], pause_me, body) =
         zen.pause(pause_zid):
           for change {.inject.} in changes:
             template added(): bool =
-              Added in change.changes
+              ADDED in change.changes
 
             template added(obj: O): bool =
               change.item == obj and added()
 
             template removed(): bool =
-              Removed in change.changes
+              REMOVED in change.changes
 
             template removed(obj: O): bool =
               change.item == obj and removed()
 
             template modified(): bool =
-              Modified in change.changes
+              MODIFIED in change.changes
 
             template modified(obj: O): bool =
               change.item == obj and modified()
 
             template touched(): bool =
-              Touched in change.changes
+              TOUCHED in change.changes
 
             template touched(obj: O): bool =
               change.item == obj and touched()
 
             template closed(): bool =
-              Closed in change.changes
+              CLOSED in change.changes
 
             {.line.}:
               body

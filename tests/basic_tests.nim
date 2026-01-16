@@ -109,9 +109,9 @@ proc run*() =
       added = {}
       removed = {}
       for c in changes:
-        if Added in c.changes:
+        if ADDED in c.changes:
           added.incl(c.item)
-        elif Removed in c.changes:
+        elif REMOVED in c.changes:
           removed.incl(c.item)
 
     s += Flag3
@@ -137,9 +137,9 @@ proc run*() =
       also_added = {}
       also_removed = {}
       for c in changes:
-        if Added in c.changes:
+        if ADDED in c.changes:
           also_added.incl(c.item)
-        elif Removed in c.changes:
+        elif REMOVED in c.changes:
           also_removed.incl(c.item)
 
     s.untrack(zid)
@@ -160,8 +160,8 @@ proc run*() =
       removed_items {.threadvar.}: seq[string]
 
     var id = s.track proc(changes: auto) {.gcsafe.} =
-      added_items.add changes.filter_it(Added in it.changes).map_it it.item
-      removed_items.add changes.filter_it(Removed in it.changes).map_it it.item
+      added_items.add changes.filter_it(ADDED in it.changes).map_it it.item
+      removed_items.add changes.filter_it(REMOVED in it.changes).map_it it.item
     s.add "hello"
     s.add "world"
 
@@ -224,7 +224,7 @@ proc run*() =
     a[1] += 3
 
   test "nested_changes":
-    let flags = {TrackChildren, SyncLocal, SyncRemote}
+    let flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
     type Flags = enum
       Flag1
       Flag2
@@ -294,9 +294,9 @@ proc run*() =
       if not changed:
         changed = true
         check changes.len == 2
-        check changes[0].changes == {Removed, Modified}
+        check changes[0].changes == {REMOVED, MODIFIED}
         check not changes[0].item.value.is_nil
-        check changes[1].changes == {Added, Modified}
+        check changes[1].changes == {ADDED, MODIFIED}
         check changes[1].item.value.is_nil
     buffers[1] = nil
     check changed
@@ -340,7 +340,7 @@ proc run*() =
         flags: ZenSet[UnitFlags]
 
     proc init(
-        _: type Unit, id = 0, flags = {TrackChildren, SyncLocal, SyncRemote}
+        _: type Unit, id = 0, flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
     ): Unit =
       result = Unit(id: id)
       result.units = ~(seq[Unit], flags)
@@ -372,11 +372,11 @@ proc run*() =
     let trigger = triggered_by[0][0].triggered_by[0].triggered_by[0]
     check trigger of Change[UnitFlags]
     let f = Change[UnitFlags](trigger)
-    check Added in f.changes
+    check ADDED in f.changes
     check f.item == Targeted
 
     # without child tracking:
-    a = Unit.init(flags = {SyncLocal, SyncRemote})
+    a = Unit.init(flags = {SYNC_LOCAL, SYNC_REMOTE})
     id = a.units.count_changes
     b = Unit.init
     1.changes:
@@ -389,15 +389,15 @@ proc run*() =
   test "primitives":
     let a = ZenValue[int].init
     a.assert_changes {
-      Removed: 0,
-      Added: 5,
-      Removed: 5,
-      Added: 10,
-      Touched: 10,
-      Removed: 10,
-      Touched: 11,
-      Removed: 11,
-      Added: 12
+      REMOVED: 0,
+      ADDED: 5,
+      REMOVED: 5,
+      ADDED: 10,
+      TOUCHED: 10,
+      REMOVED: 10,
+      TOUCHED: 11,
+      REMOVED: 11,
+      ADDED: 12
     }:
       a ~= 5
       a ~= 10
@@ -406,11 +406,11 @@ proc run*() =
       a.touch 12
 
     let b = ~4
-    b.assert_changes {Removed: 4, Added: 11}:
+    b.assert_changes {REMOVED: 4, ADDED: 11}:
       b ~= 11
 
     let c = ~"enu"
-    c.assert_changes {Removed: "enu", Added: "ENU"}:
+    c.assert_changes {REMOVED: "enu", ADDED: "ENU"}:
       c ~= "ENU"
 
   test "refs":
@@ -420,7 +420,7 @@ proc run*() =
     let (r1, r2, r3) = (ARef(id: 1), ARef(id: 2), ARef(id: 3))
 
     let a = ~r1
-    a.assert_changes {Removed: r1, Added: r2, Removed: r2, Added: r3}:
+    a.assert_changes {REMOVED: r1, ADDED: r2, REMOVED: r2, ADDED: r3}:
       a ~= r2
       a ~= r3
 
@@ -465,14 +465,14 @@ proc run*() =
 
     s.track proc(changes: auto) {.gcsafe.} =
       changed = true
-      check changes[0].changes == {Closed}
+      check changes[0].changes == {CLOSED}
     s.untrack_all
     check changed == true
 
     changed = false
     let zid = s.track proc(changes: auto) {.gcsafe.} =
       changed = true
-      check changes[0].changes == {Closed}
+      check changes[0].changes == {CLOSED}
     Zen.thread_ctx.untrack(zid)
     check changed == true
 
@@ -820,7 +820,7 @@ proc run*() =
     Zen.register(SyncUnit, false)
 
     local_and_remote:
-      let flags = {TrackChildren, SyncLocal, SyncRemote}
+      let flags = {TRACK_CHILDREN, SYNC_LOCAL, SYNC_REMOTE}
       var src = State().init_zen_fields(flags = flags)
 
       ctx2.tick

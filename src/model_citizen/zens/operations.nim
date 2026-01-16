@@ -7,7 +7,7 @@ proc untrack_all*[T, O](self: Zen[T, O]) =
   private_access ZenBase
   private_access ZenContext
   assert self.valid
-  self.trigger_callbacks(@[Change.init(O, {Closed})])
+  self.trigger_callbacks(@[Change.init(O, {CLOSED})])
   for zid, _ in self.changed_callbacks.pairs:
     self.ctx.close_procs.del(zid)
 
@@ -94,7 +94,7 @@ proc add*[T, O](self: Zen[T, O], value: O, op_ctx = OperationContext()) =
   else:
     assert self.valid
   self.tracked.add value
-  let added = @[Change.init(value, {Added})]
+  let added = @[Change.init(value, {ADDED})]
   self.link_or_unlink(added, true)
   when O isnot Zen and O is ref:
     self.ctx.ref_count(added, self.id)

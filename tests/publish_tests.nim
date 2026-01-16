@@ -93,7 +93,7 @@ proc run*() =
 
   test "no sync objects are created remotely, but their value doesn't sync":
     var
-      flags = {TrackChildren}
+      flags = {TRACK_CHILDREN}
       ctx1 = ZenContext.init(id = "ctx1")
       ctx2 = ZenContext.init(id = "ctx2")
       a = ZenValue[string].init(id = "test1", ctx = ctx1, flags = flags)
