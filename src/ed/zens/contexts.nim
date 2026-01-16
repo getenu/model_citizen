@@ -1,11 +1,12 @@
 import std/[net, tables, times, options, sugar, math]
-import pkg/chronicles, pkg/threading/channels {.all.}
+import pkg/threading/channels {.all.}
 
 import
   ed/[
     core,
     types {.all.},
     utils/misc,
+    utils/logging,
     zens/validations,
     components/private/global_state
   ]
