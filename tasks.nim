@@ -10,8 +10,37 @@ task test, "Run all tests":
   exec "nim c -r tests/tests.nim"
   exec "nim c -r tests/threading_tests.nim"
 
+proc generate_jsondoc() =
+  echo "Generating JSON documentation..."
+
+  let json_dir = "docs/json"
+  if not dirExists(json_dir):
+    mkDir(json_dir)
+
+  # Generate jsondoc for key modules
+  # Note: subscriptions.nim and type_registry.nim cause jsondoc compiler bugs
+  let modules = @[
+    ("ed/types", src_dir / "ed/types.nim"),
+    ("ed/zens/initializers", src_dir / "ed/zens/initializers.nim"),
+    ("ed/zens/operations", src_dir / "ed/zens/operations.nim"),
+    ("ed/zens/contexts", src_dir / "ed/zens/contexts.nim"),
+    ("ed/zens/validations", src_dir / "ed/zens/validations.nim"),
+  ]
+
+  for (name, path) in modules:
+    let out_path = json_dir / name.parentDir
+    echo "  ", path, " -> ", out_path
+    if not dirExists(out_path):
+      mkDir(out_path)
+    exec "nim --hints:off jsondoc --outdir:" & out_path & " " & path
+
+  echo "JSON documentation generated in ", json_dir
+
 task docs, "Generate Ed documentation":
   echo "Generating Ed documentation..."
+
+  # First generate jsondoc for Ed doc generator
+  generate_jsondoc()
 
   if dirExists(out_dir):
     rmDir(out_dir)

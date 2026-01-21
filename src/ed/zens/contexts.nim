@@ -58,7 +58,7 @@ proc init*(
     min_recv_duration = Duration.default,
     label = "default",
 ): EdContext =
-  ## Create a new EdContext. Set `listen_address` to enable network sync.
+  ## Create a new `EdContext`. Set `listen_address` to enable network sync.
   privileged
   log_scope:
     topics = "ed"
@@ -91,7 +91,7 @@ proc init*(
     result.reactor = new_reactor(listen_address, port)
 
 proc thread_ctx*(t: type Ed): EdContext =
-  ## Get the current thread's EdContext. Creates one if it doesn't exist.
+  ## Get the current thread's `EdContext`. Creates one if it doesn't exist.
   if active_ctx == nil:
     active_ctx = EdContext.init(id = "thread-" & $get_thread_id())
   active_ctx

@@ -9,3 +9,5 @@ requires(
   "flatty", "netty", "supersnappy",
   "https://github.com/getenu/nanoid.nim >= 0.2.1", "metrics#51f1227",
 )
+
+include tasks

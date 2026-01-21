@@ -6,14 +6,14 @@ type
     ## Callback identifier for tracking registered callbacks.
 
   EdFlags* = enum
-    ## Flags controlling Ed container behavior.
-    TRACK_CHILDREN    ## Propagate changes from nested Ed objects
+    ## Flags controlling `Ed` container behavior.
+    TRACK_CHILDREN    ## Propagate changes from nested `Ed` objects
     SYNC_LOCAL        ## Sync changes to other local contexts (threads)
     SYNC_REMOTE       ## Sync changes to remote contexts (network)
     SYNC_ALL_NO_OVERWRITE  ## Sync without overwriting existing data
 
   ChangeKind* = enum
-    ## Types of changes that can occur on an Ed container.
+    ## Types of changes that can occur on an `Ed` container.
     CREATED   ## Object was created
     ADDED     ## Item was added (sequences, sets, tables)
     REMOVED   ## Item was removed
@@ -73,11 +73,11 @@ type
   )
 
   Change*[O] = ref object of BaseChange
-    ## Represents a change to an Ed container, including the affected item.
+    ## Represents a change to an `Ed` container, including the affected item.
     item*: O
 
   Pair[K, V] = object
-    ## Key-value pair used for EdTable changes.
+    ## Key-value pair used for `EdTable` changes.
     key*: K
     value*: V
 
@@ -113,7 +113,7 @@ type
       discard
 
   EdContext* = ref object
-    ## Central coordination object managing Ed container lifecycle, subscriptions,
+    ## Central coordination object managing `Ed` container lifecycle, subscriptions,
     ## and message passing between threads/network.
     id*: string
     changed_callback_eid: EID
@@ -159,7 +159,7 @@ type
       counts*: array[MessageKind, int]
 
   EdBase* = object of RootObj
-    ## Base type for all Ed containers. Not used directly.
+    ## Base type for all `Ed` containers. Not used directly.
     id*: string
     destroyed*: bool
     link_eid: EID
@@ -201,10 +201,10 @@ type
     ## Reactive single-value container.
 
 const DEFAULT_FLAGS* = {SYNC_LOCAL, SYNC_REMOTE}
-  ## Default flags for Ed containers: sync both locally and remotely.
+  ## Default flags for `Ed` containers: sync both locally and remotely.
 
 template ed_ignore*() {.pragma.}
-  ## Mark a field to be ignored during Ed serialization.
+  ## Mark a field to be ignored during `Ed` serialization.
 
 proc write_value*[T](w: var JsonWriter, self: set[T]) =
   write_value(w, self.to_seq)

@@ -1,9 +1,7 @@
 import std/[typetraits, macros, macrocache]
 import ed/[core, components/private/tracking]
 import ed/components/private/global_state
-import
-  ed/types {.all.},
-  ed/zens/[validations, operations, contexts, private]
+import ed/types {.all.}, ed/zens/[validations, operations, contexts, private]
 
 export new_ident_node
 
@@ -104,7 +102,9 @@ proc defaults[T, O](
       when defined(ed_trace):
         msg.trace = get_stack_trace()
 
-      src_ctx.send(sub, msg, op_ctx, flags = self.flags & {SYNC_ALL_NO_OVERWRITE})
+      src_ctx.send(
+        sub, msg, op_ctx, flags = self.flags & {SYNC_ALL_NO_OVERWRITE}
+      )
 
     if sub.kind != BLANK:
       ctx.send_msg(sub)
@@ -232,7 +232,7 @@ proc init*(
     id = "",
     op_ctx = OperationContext(),
 ): T =
-  ## Initialize an empty Ed container of the given type.
+  ## Initialize an empty `Ed` container of the given type.
   ctx.setup_op_ctx
   T(flags: flags).defaults(ctx, id, op_ctx)
 
@@ -374,7 +374,7 @@ proc init*[T, O](
 proc init_ed_fields*[T: object or ref](
     self: T, flags = DEFAULT_FLAGS, ctx = ctx()
 ): T {.discardable.} =
-  ## Initialize all Ed fields on an object. Call after creating an object with Ed fields.
+  ## Initialize all `Ed` fields on an object. Call after creating an object with `Ed` fields.
   result = self
   for field in fields(self.deref):
     when field is Ed:
@@ -383,19 +383,19 @@ proc init_ed_fields*[T: object or ref](
 proc init_from*[T: object or ref](
     _: type T, src: T, ctx = ctx()
 ): T {.discardable.} =
-  ## Create an object by looking up Ed fields from a source object in a different context.
+  ## Create an object by looking up `Ed` fields from a source object in a different context.
   result = T()
   for src, dest in fields(src.deref, result.deref):
     when dest is Ed:
       dest = ctx[src]
 
 proc ed*[T](value: T): EdValue[T] =
-  ## Convenience constructor for EdValue. Creates an Ed container holding the given value.
+  ## Convenience constructor for `EdValue`. Creates an `Ed` container holding the given value.
   ## Example: `let name = ed("hello")`
   result = EdValue[T].init(value)
 
 macro bootstrap*(_: type Ed): untyped =
-  ## Initialize the Ed runtime. Call once at application startup before creating Ed containers.
+  ## Initialize the `Ed` runtime. Call once at application startup before creating `Ed` containers.
   result = new_stmt_list()
   for initializer in INITIALIZERS:
     result.add initializer

@@ -1,6 +1,6 @@
-## Ed - Reactive Data Framework for Enu
+## `Ed` - Reactive Data Framework for Enu
 ##
-## Ed provides thread-safe, network-synchronized reactive data containers.
+## `Ed` provides thread-safe, network-synchronized reactive data containers.
 ##
 ## **Warning:** Data consistency is eventual, not guaranteed. Do not use for
 ## critical data. Full consistency support planned for future versions.

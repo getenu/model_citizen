@@ -1,4 +1,4 @@
-# Ed
+# Ed (Enu Data)
 
 Ed is Enu's reactive data framework for Nim. It provides thread-safe, network-synchronized data containers that enable reactive programming patterns.
 
@@ -13,7 +13,7 @@ Ed is Enu's reactive data framework for Nim. It provides thread-safe, network-sy
 ## Installation
 
 ```bash
-nimble install model_citizen
+nimble install ed
 ```
 
 ## Quick Start
@@ -81,7 +81,7 @@ Full documentation: https://getenu.com/ed
 
 ## Warning
 
-Data consistency in Ed is eventual, not guaranteed. Do not use for critical data where strong consistency is required. Full consistency support is planned for future versions.
+Ed makes no effort to keep data consistent. Do not use for anything important. Eventual consistency support is planned.
 
 ## License
 
