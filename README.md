@@ -1,10 +1,10 @@
 # Ed (Enu Data)
 
-Ed is Enu's reactive data framework for Nim. It provides thread-safe, network-synchronized data containers that enable reactive programming patterns.
+`Ed` is Enu's reactive data framework for Nim. It provides thread-safe, network-synchronized data containers that enable reactive programming patterns.
 
 ## Features
 
-- **Reactive containers**: EdValue, EdSeq, EdTable, EdSet - track and react to data changes
+- **Reactive containers**: `EdValue`, `EdSeq`, `EdTable`, `EdSet` - track and react to data changes
 - **Thread synchronization**: Safely share data across threads with automatic sync
 - **Network synchronization**: Sync data across network connections
 - **Change tracking**: Detailed callbacks for data modifications (added, removed, modified, touched)
@@ -77,11 +77,11 @@ ctx2.tick
 
 ## Documentation
 
-Full documentation: https://getenu.com/ed
+Full documentation: [getenu.com/ed](https://getenu.com/ed)
 
 ## Warning
 
-Ed makes no effort to keep data consistent. Do not use for anything important. Eventual consistency support is planned.
+`Ed` makes no effort to keep data consistent. Do not use for anything important. Eventual consistency support is planned.
 
 ## License
 
