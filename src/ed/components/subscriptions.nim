@@ -1,15 +1,14 @@
 import
   std/[
     importutils, tables, sets, sequtils, algorithm, intsets, locks, math, times,
-    strutils,
+    strutils, deques,
   ]
 
 import pkg/threading/channels {.all.}
 import pkg/[flatty, supersnappy]
 
 import
-  ed/[core, types {.all.}],
-  ed/zens/[contexts, private, initializers {.all.}]
+  ed/[core, types {.all.}], ed/zens/[contexts, private, initializers {.all.}]
 
 import ed/components/[private/global_state]
 
@@ -333,6 +332,44 @@ proc publish_changes*[T, O](
 
     self.ctx.tick_reactor
 
+proc get_dependency_order*(self: EdContext): seq[string] =
+  ## Return object IDs in dependency order (dependencies first).
+  ## Uses Kahn's algorithm for topological sort.
+  var graph: Table[string, seq[string]] # id -> dependencies
+  var in_degree: Table[string, int]
+
+  # Initialize all objects with 0 in-degree
+  for id in self.objects.keys:
+    in_degree[id] = 0
+
+  # Build graph - record which objects depend on which
+  for id, obj in self.objects:
+    if ?obj and obj.get_dependencies != nil:
+      let deps = obj.get_dependencies()
+      graph[id] = deps
+      # Each dependency increases the in-degree of the object that depends on it
+      for dep in deps:
+        if dep in self.objects:
+          in_degree[id] = in_degree.getOrDefault(id) + 1
+
+  # Kahn's algorithm: start with objects that have no dependencies
+  var queue: Deque[string]
+  for id in self.objects.keys:
+    if in_degree.getOrDefault(id) == 0:
+      queue.addLast(id)
+
+  while queue.len > 0:
+    let id = queue.popFirst()
+    result.add(id)
+    # For each object that depends on this one, reduce its in-degree
+    for other_id, deps in graph:
+      if id in deps:
+        in_degree[other_id] -= 1
+        if in_degree[other_id] == 0:
+          queue.addLast(other_id)
+
+  result.reverse
+
 proc add_subscriber*(
     self: EdContext,
     sub: Subscription,
@@ -342,7 +379,7 @@ proc add_subscriber*(
   self.pack_objects
   debug "adding subscriber", sub
   self.subscribers.add sub
-  for id in self.objects.keys.to_seq.reversed:
+  for id in self.get_dependency_order:
     if id notin remote_objects or push_all:
       debug "sending object on subscribe",
         from_ctx = self.id, to_ctx = sub.ctx_id, ed_id = id
@@ -577,8 +614,7 @@ proc track*[T, O](
   result = zid
 
 proc track*[T, O](
-    self: Ed[T, O],
-    callback: proc(changes: seq[Change[O]], zid: EID) {.gcsafe.},
+    self: Ed[T, O], callback: proc(changes: seq[Change[O]], zid: EID) {.gcsafe.}
 ): EID {.discardable.} =
   assert self.valid
   var zid: EID

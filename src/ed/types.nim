@@ -177,6 +177,8 @@ type
     change_receiver:
       proc(self: ref EdBase, msg: Message, op_ctx: OperationContext) {.gcsafe.}
 
+    get_dependencies*: proc(): seq[string] {.gcsafe.}
+
     ctx*: EdContext
 
   ChangeCallback[O] = proc(changes: seq[Change[O]]) {.gcsafe.}

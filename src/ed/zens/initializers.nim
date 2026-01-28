@@ -41,9 +41,12 @@ proc create_initializer[T, O](self: Ed[T, O]) =
 
             let initializer = proc() =
               debug "deferred restore of received object value", id
+              notice "DEFERRED_INIT: setting value", ed_id = id, ed_type = $Ed[T, O]
               {.gcsafe.}:
                 let value = bin.from_flatty(T, ctx)
               let item = Ed[T, O](ctx[id])
+              when T is Table:
+                notice "DEFERRED_INIT: table size", ed_id = id, size = value.len
               `value=`(item, value, op_ctx = op_ctx)
             ctx.value_initializers.add(initializer)
         elif id notin ctx:
@@ -75,6 +78,23 @@ proc defaults[T, O](
   if self.id in ctx.objects and not ?ctx.objects[self.id]:
     ctx.pack_objects
   ctx.objects[self.id] = self
+
+  self.get_dependencies = proc(): seq[string] =
+    result = @[]
+    when T is seq:
+      type ItemType = typeof(default(T)[0])
+      when ItemType is ref EdBase:
+        for item in self.tracked:
+          if ?item:
+            result.add(item.id)
+    elif T is Table:
+      for k, v in self.tracked:
+        when v is ref EdBase:
+          if ?v:
+            result.add(v.id)
+    elif T is ref EdBase:
+      if ?self.tracked:
+        result.add(self.tracked.id)
 
   self.publish_create = proc(
       sub: Subscription, broadcast: bool, op_ctx = OperationContext()
